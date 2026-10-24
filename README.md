@@ -5,7 +5,8 @@ A Lovelace card for a **Thermia Calibra / Diplomat Inverter** ground source heat
 It draws the system as it is actually plumbed:
 
 - **Borehole:** brine in and out, ΔT, and the depth.
-- **Compressor:** current gear against the allowed maximum (blocked gears are hatched), speed, pumps, and the internal immersion heater.
+- **Compressor:** current gear against the allowed maximum (blocked gears are hatched), speed and pumps.
+- **Internal immersion heater:** its active step, drawn as a bar like the gears.
 - **Diverting valve:** splits the supply between the radiators and the TWC tank. The arrow turns and the inactive branch greys out.
 - **Radiators:** supply, return, ΔT and heating stop (on/off and its limit).
 - **TWC tank:** top and bottom temperature, coloured by temperature.
@@ -73,6 +74,8 @@ notices:
 | `entities.<key>` | Override any entity. The keys are listed in `DEFAULT_ENTITIES` at the top of `dist/calibra-card.js`. |
 | `entities.valve` | Binary sensor that is `on` while the valve points to hot water. Without it the card infers the valve position from the demand. |
 | `entities.immersion` | Binary sensor (`on`) or step sensor (`> 0`) for the internal immersion heater. Thermiagenesis has these entities, but they are disabled by default. |
+| `immersion_steps` | Number of immersion heater steps drawn as a bar like the compressor's gears (default `3`). |
+| `immersion_step_kw` | Optional kW per step; adds e.g. "· 6 kW" next to the active step. |
 | `notices` | A list of `{entity, state (default "on"), text}`. Each text is added to the explanation line while its entity is in that state. |
 
 "Today" values (energy and the lowest brine temperature) come from long-term statistics and refresh every 5 minutes.

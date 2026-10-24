@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0 — 2026-10-24
+
+- The internal immersion heater gets a step bar like the compressor's gears, in both layouts: "steg 1 av 3".
+- New options: `immersion_steps` (default 3) and `immersion_step_kw`.
+
 ## 0.1.1 — 2026-10-24
 
 - The compact layout (below 560 px) also shows the immersion heater row in the compressor box: "Elpatron av", or highlighted with the active step.

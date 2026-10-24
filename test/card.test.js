@@ -59,6 +59,7 @@ function card(over = {}, config = {}, lang = "sv") {
 }
 
 const html = (c) => c.shadowRoot.innerHTML;
+const count = (s, needle) => s.split(needle).length - 1;
 
 test("heating: radiator branch live, valve points right, demand translated", () => {
   const c = card();
@@ -191,4 +192,15 @@ test("compact mode keeps an immersion heater row", () => {
   const h = html(c);
   assert.match(h, /class="wrap compact"/);
   assert.match(h, /class="short imm-compact"[\s\S]*?>Elpatron<[\s\S]*?>steg 2</);
+});
+
+test("immersion heater steps are drawn like gears", () => {
+  const c = card({ "sensor.immersion_step": "2" }, { immersion_steps: 3, immersion_step_kw: 3 });
+  const m = c._model();
+  assert.deepEqual(m.immersion.steps, [true, true, false]);
+  assert.equal(m.immersion.text, "steg 2 av 3 · 6 kW");
+  assert.equal(count(html(c), 'fill="#d9822b"'), 4);   // two steps, full and compact bars
+  const off = card()._model().immersion;
+  assert.deepEqual(off.steps, [false, false, false]);
+  assert.equal(off.text, "av");
 });

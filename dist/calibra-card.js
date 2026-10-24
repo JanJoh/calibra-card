@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.1.1";
+const CARD_VERSION = "0.2.0";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -53,7 +53,7 @@ const COLORS = {
   heat: "#d9622b", heatRet: "#f0a77f",
   hw: "#d0453a", hwRet: "#ec9a92",
   tap: "#d0453a", idle: "var(--calibra-idle, #c9cdd2)",
-  gear: "#2f6fb3", gearLimited: "#b26b00",
+  gear: "#2f6fb3", gearLimited: "#b26b00", immersion: "#d9822b",
 };
 
 const T = {
@@ -61,7 +61,7 @@ const T = {
     title: "Värmepump", borehole: "Borrhål", in: "In", out: "Ut", compressor: "Kompressor",
     gearOf: (g, m) => `Växel ${g} av ${m}`, gearOfAllowed: (g, m) => `Växel ${g} av ${m} tillåtna`,
     stopped: "Står still", brinePump: "Brinepump", condPump: "Kondensorpump", immersion: "Intern elpatron", immersionShort: "Elpatron",
-    off: "av", on: "på", step: (s) => `steg ${s}`, circuit: "Kylkrets ›", radiators: "Radiatorer", supply: "Fram", ret: "Retur",
+    off: "av", on: "på", step: (s) => `steg ${s}`, stepOf: (s, n) => `steg ${s} av ${n}`, circuit: "Kylkrets ›", radiators: "Radiatorer", supply: "Fram", ret: "Retur",
     valve: "Ventil →", toHeat: "värme", toTap: "varmvatten", heater: "Beredare", heaterSub: "Egen termostat",
     heaterIdle: "vilar", heaterOn: "värmer", taps: "Kranar", outdoor: "Ute", power: "Effekt nu", price: "Elpris",
     heatStopOn: (t) => `Värmestopp på${t}`, heatStopOff: (t) => `Värmestopp av${t}`, limit: (t) => ` (${t})`, gearShort: (g, m) => `Växel ${g}/${m}`,
@@ -83,7 +83,7 @@ const T = {
     title: "Heat pump", borehole: "Borehole", in: "In", out: "Out", compressor: "Compressor",
     gearOf: (g, m) => `Gear ${g} of ${m}`, gearOfAllowed: (g, m) => `Gear ${g} of ${m} allowed`,
     stopped: "Stopped", brinePump: "Brine pump", condPump: "Condenser pump", immersion: "Immersion heater", immersionShort: "Immersion",
-    off: "off", on: "on", step: (s) => `step ${s}`, circuit: "Refrigerant ›", radiators: "Radiators", supply: "Supply", ret: "Return",
+    off: "off", on: "on", step: (s) => `step ${s}`, stepOf: (s, n) => `step ${s} of ${n}`, circuit: "Refrigerant ›", radiators: "Radiators", supply: "Supply", ret: "Return",
     valve: "Valve →", toHeat: "heating", toTap: "hot water", heater: "Water heater", heaterSub: "Own thermostat",
     heaterIdle: "idle", heaterOn: "heating", taps: "Taps", outdoor: "Outdoor", power: "Power", price: "Price",
     heatStopOn: (t) => `Heating stop on${t}`, heatStopOff: (t) => `Heating stop off${t}`, limit: (t) => ` (${t})`, gearShort: (g, m) => `Gear ${g}/${m}`,
@@ -280,7 +280,7 @@ class CalibraCard extends HTMLElement {
       gearText: running ? (limited ? t.gearOfAllowed(gear, maxAllowed) : t.gearOf(gear, gears)) : t.stopped,
       speed: `${fmt(n("compressor_pct"), 0, "%", lang)} · ${fmt(n("compressor_rpm"), 0, "rpm", lang)}`,
       brinePump: fmt(n("brine_pump"), 0, "%", lang), condPump: fmt(n("condenser_pump"), 0, "%", lang),
-      immersion: e.immersion ? { on: immersion, text: !immersion ? t.off : str(hass, e.immersion) === "on" ? t.on : t.step(str(hass, e.immersion)) } : null,
+      immersion: e.immersion ? this._immersionModel(immersion) : null,
       supply: heatOn || heatStop ? fmt(n("condenser_out"), 1, "°", lang) : fmt(n("condenser_out"), 1, "°", lang),
       ret: fmt(n("condenser_in"), 1, "°", lang),
       heatDt: n("condenser_out") !== null && n("condenser_in") !== null ? fmt(n("condenser_out") - n("condenser_in"), 1, "", lang) : "–",
@@ -295,6 +295,21 @@ class CalibraCard extends HTMLElement {
         brine: fmt(this._stats.brine, 1, "°C", lang),
         imm: immHours.length ? immHours.map((h) => fmt(h, 0, "h", lang)).join(" · ") : null,
       },
+    };
+  }
+
+  // Step sensor (0..n) or binary sensor; a binary "on" counts as step 1.
+  _immersionModel(on) {
+    const t = this._t, lang = this._lang, raw = str(this._hass, this._config.entities.immersion);
+    const n = Math.max(1, Math.round(this._config.immersion_steps ?? 3));
+    const step = !on ? 0 : raw === "on" ? 1 : Math.min(n, Math.max(1, Math.round(parseFloat(raw) || 1)));
+    const kw = this._config.immersion_step_kw;
+    const power = on && kw ? ` · ${fmt(step * kw, 0, "kW", lang)}` : "";
+    return {
+      on,
+      steps: Array.from({ length: n }, (_, i) => i < step),
+      text: on ? `${t.stepOf(step, n)}${power}` : t.off,
+      short: on ? `${t.step(step)}${power}` : t.off,
     };
   }
 
@@ -341,6 +356,11 @@ class CalibraCard extends HTMLElement {
     }).join("");
 
     const tankId = "tg";
+    // Immersion heater steps, drawn like the compressor's gears
+    const immBar = (x, y, h) => {
+      const st = m.immersion.steps, w = (160 - 3 * (st.length - 1)) / st.length;
+      return st.map((on, i) => `<rect x="${(x + i * (w + 3)).toFixed(2)}" y="${y}" width="${w.toFixed(2)}" height="${h}" rx="3" fill="${on ? c.immersion : "var(--calibra-seg, #e3e6ea)"}"/>`).join("");
+    };
     const hpRows = [
       [t.brinePump, m.brinePump, e.brine_pump],
       [t.condPump, m.condPump, e.condenser_pump],
@@ -374,11 +394,13 @@ class CalibraCard extends HTMLElement {
     ${txt(185, 142, m.speed, "lbl opt", e.compressor_pct)}
     <line x1="185" y1="154" x2="345" y2="154" class="div opt"/>
     ${hpRows.map(([l, v, ent], i) => `${txt(185, 174 + i * 20, l, "lbl opt")}${txt(345, 174 + i * 20, v, "sm opt", ent, "end")}`).join("")}
-    ${m.immersion ? `<g class="opt">${m.immersion.on ? `<rect x="179" y="203" width="172" height="20" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
-      ${txt(185, 217, t.immersion, m.immersion.on ? "sm warn" : "lbl")}${txt(345, 217, m.immersion.text, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}</g>
-    <g class="short imm-compact">${m.immersion.on ? `<rect x="179" y="166" width="172" height="28" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
-      ${txt(185, 187, t.immersionShort, m.immersion.on ? "lbl warn" : "lbl")}${txt(345, 187, m.immersion.text, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}</g>` : ""}
-    ${txt(185, 248, t.circuit, "link")}
+    ${m.immersion ? `<g class="opt">${m.immersion.on ? `<rect x="179" y="201" width="172" height="38" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
+      ${txt(185, 215, t.immersion, m.immersion.on ? "sm warn" : "lbl")}${txt(345, 215, m.immersion.text, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}
+      ${immBar(185, 223, 9)}</g>
+    <g class="short imm-compact">${m.immersion.on ? `<rect x="179" y="162" width="172" height="46" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
+      ${txt(185, 183, t.immersionShort, m.immersion.on ? "lbl warn" : "lbl")}${txt(345, 183, m.immersion.short, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}
+      ${immBar(185, 192, 10)}</g>` : ""}
+    ${txt(185, 262, t.circuit, "link")}
   </g>
 
   ${pipe(360, 78, 560, 78, col.heatRet)}
