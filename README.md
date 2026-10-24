@@ -5,7 +5,8 @@ A Lovelace card for a **Thermia Calibra / Diplomat Inverter** ground source heat
 It draws the system as it is actually plumbed:
 
 - **Borehole:** brine in and out, ΔT, and the depth.
-- **Compressor:** current gear against the allowed maximum (blocked gears are hatched), speed and pumps.
+- **Compressor:** current gear against the allowed maximum (blocked gears are hatched) and speed.
+- **Pumps:** the brine pump on the brine line and the condenser pump on the supply, each drawn as a pump whose ring fills with its speed. The impeller spins faster at higher speed; it stays still with reduced motion.
 - **Internal immersion heater:** its active step, drawn as a bar like the gears.
 - **Diverting valve:** splits the supply between the radiators and the TWC tank. The arrow turns and the inactive branch greys out.
 - **Radiators:** supply, return, ΔT and heating stop (on/off and its limit).

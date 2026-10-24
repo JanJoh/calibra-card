@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.2.2";
+const CARD_VERSION = "0.3.0";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -278,6 +278,7 @@ class CalibraCard extends HTMLElement {
       compText: running ? `${fmt(n("compressor_pct"), 0, "%", lang)} · ${fmt(n("compressor_rpm"), 0, "rpm", lang)}` : t.stopped,
       compShort: running ? fmt(n("compressor_pct"), 0, "%", lang) : t.stopped,
       brinePump: fmt(n("brine_pump"), 0, "%", lang), condPump: fmt(n("condenser_pump"), 0, "%", lang),
+      brinePct: n("brine_pump"), condPct: n("condenser_pump"),
       immersion: e.immersion ? this._immersionModel(immersion) : null,
       supply: heatOn || heatStop ? fmt(n("condenser_out"), 1, "°", lang) : fmt(n("condenser_out"), 1, "°", lang),
       ret: fmt(n("condenser_in"), 1, "°", lang),
@@ -355,10 +356,18 @@ class CalibraCard extends HTMLElement {
       const st = m.immersion.steps, w = (160 - 3 * (st.length - 1)) / st.length;
       return st.map((on, i) => `<rect x="${(x + i * (w + 3)).toFixed(2)}" y="${y}" width="${w.toFixed(2)}" height="${h}" rx="3" fill="${on ? c.immersion : "var(--calibra-seg, #e3e6ea)"}"/>`).join("");
     };
-    const hpRows = [
-      [t.brinePump, m.brinePump, e.brine_pump],
-      [t.condPump, m.condPump, e.condenser_pump],
-    ];
+    // Pump symbol: a ring filled to the speed, with an impeller that spins while running
+    const pumpSym = (cx, cy, pct, color, ent) => {
+      const r = 12, circ = 2 * Math.PI * r, k = Math.max(0, Math.min(100, pct || 0)) / 100;
+      const spin = k > 0 ? ` style="animation-duration:${(2.4 - 1.8 * k).toFixed(2)}s"` : "";   // faster at higher speed
+      return `<g class="pump" data-entity="${esc(ent)}">
+        <circle cx="${cx}" cy="${cy}" r="${r}" class="pumpbg"/>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--calibra-seg, #e3e6ea)" stroke-width="3"/>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${k > 0 ? color : "transparent"}" stroke-width="3"
+          stroke-dasharray="${(circ * k).toFixed(1)} ${circ.toFixed(1)}" transform="rotate(-90 ${cx} ${cy})"/>
+        <g class="${k > 0 ? "spin" : ""}"${spin}><path d="M${cx - 5} ${cy - 5}l10 5-10 5z" fill="${k > 0 ? color : "var(--calibra-idle, #c9cdd2)"}"/></g>
+      </g>`;
+    };
     return `
 <svg viewBox="0 34 712 296" role="img" aria-label="${esc(t.title)}">
   <defs>
@@ -381,19 +390,18 @@ class CalibraCard extends HTMLElement {
   ${txt(60, 180, `${t.out} ${m.brineOut}`, "val", e.brine_out)}
 
   <g class="hp" data-action="detail" tabindex="0" role="button" aria-label="${esc(t.circuit)}">
-    <rect x="170" y="56" width="190" height="248" rx="12" class="box hpbox"/>
+    <rect x="170" y="56" width="190" height="180" rx="12" class="box hpbox"/>
     ${txt(185, 78, t.compressor, "lbl")}
     ${segs}
     ${txt(185, 126, m.compText, "val full", e.compressor_pct)}${txt(185, 130, m.compShort, "val big short", e.compressor_pct)}
     <line x1="185" y1="142" x2="345" y2="142" class="div opt"/>
-    ${hpRows.map(([l, v, ent], i) => `${txt(185, 162 + i * 20, l, "lbl opt")}${txt(345, 162 + i * 20, v, "sm opt", ent, "end")}`).join("")}
-    ${m.immersion ? `<g class="opt" data-entity="${esc(e.immersion)}">${m.immersion.on ? `<rect x="179" y="189" width="172" height="38" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
-      ${txt(185, 203, t.immersion, m.immersion.on ? "sm warn" : "lbl")}${txt(345, 203, m.immersion.text, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}
-      ${immBar(185, 211, 9)}</g>
-    <g class="short imm-compact" data-entity="${esc(e.immersion)}">${m.immersion.on ? `<rect x="179" y="162" width="172" height="46" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
-      ${txt(185, 183, t.immersionShort, m.immersion.on ? "lbl warn" : "lbl")}${txt(345, 183, m.immersion.short, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}
-      ${immBar(185, 192, 10)}</g>` : ""}
-    ${txt(185, 252, t.circuit, "link")}
+    ${m.immersion ? `<g class="opt" data-entity="${esc(e.immersion)}">${m.immersion.on ? `<rect x="179" y="150" width="172" height="38" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
+      ${txt(185, 164, t.immersion, m.immersion.on ? "sm warn" : "lbl")}${txt(345, 164, m.immersion.text, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}
+      ${immBar(185, 172, 9)}</g>
+    <g class="short imm-compact" data-entity="${esc(e.immersion)}">${m.immersion.on ? `<rect x="179" y="142" width="172" height="46" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
+      ${txt(185, 163, t.immersionShort, m.immersion.on ? "lbl warn" : "lbl")}${txt(345, 163, m.immersion.short, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}
+      ${immBar(185, 172, 10)}</g>` : ""}
+    ${txt(185, 222, t.circuit, "link")}
   </g>
 
   ${pipe(360, 78, 560, 78, col.heatRet)}
@@ -403,7 +411,7 @@ class CalibraCard extends HTMLElement {
   ${pipe(436, 110, 560, 110, col.heat)}
   ${pipe(418, 128, 418, 206, col.hw)}${pipe(418, 206, 470, 206, col.hw)}
   <g${e.valve ? ` data-entity="${esc(e.valve)}"` : ""}><rect x="430" y="146" width="122" height="20" rx="10" class="pill opt"/>${txt(491, 160, `${t.valve} ${m.valveTap ? t.toTap : t.toHeat}`, "xs opt", "", "middle")}</g>
-  ${pipe(360, 292, 470, 292, col.hwRet)}
+  ${pipe(330, 292, 470, 292, col.hwRet)}${pipe(330, 236, 330, 292, col.hwRet)}
 
   <g class="${m.heatOn || m.heatStop ? "" : "dim"}">
     <rect x="560" y="52" width="152" height="118" rx="12" class="box"/>
@@ -431,10 +439,10 @@ class CalibraCard extends HTMLElement {
   ${arrow(566, 198, 0, col.tap)}${arrow(651, 284, 90, col.tap)}` : `
   ${pipe(542, 198, 600, 198, col.tap)}${txt(606, 202, t.taps, "lbl")}${arrow(570, 198, 0, col.tap)}`}
 
-  ${arrow(130, 120, 0, col.bIn)}${arrow(130, 160, 180, col.bOut)}
+  ${arrow(105, 120, 0, col.bIn)}${pumpSym(146, 120, m.brinePct, c.brineIn, e.brine_pump)}${txt(146, 146, m.brinePump, "xs", e.brine_pump, "middle")}${arrow(130, 160, 180, col.bOut)}
   ${arrow(16, 230, 90, col.bOut)}${arrow(30, 230, 270, col.bIn)}
-  ${arrow(380, 110, 0, col.sup)}${arrow(500, 110, 0, col.heat)}${arrow(470, 78, 180, col.heatRet)}
-  ${arrow(418, 172, 90, col.hw)}${arrow(446, 206, 0, col.hw)}${arrow(416, 292, 180, col.hwRet)}
+  ${pumpSym(380, 110, m.condPct, col.sup === c.idle ? c.heat : col.sup, e.condenser_pump)}${txt(380, 140, m.condPump, "xs", e.condenser_pump, "middle")}${arrow(500, 110, 0, col.heat)}${arrow(470, 78, 180, col.heatRet)}
+  ${arrow(418, 172, 90, col.hw)}${arrow(446, 206, 0, col.hw)}${arrow(416, 292, 180, col.hwRet)}${arrow(330, 266, 270, col.hwRet)}
 </svg>`;
   }
 
@@ -552,6 +560,7 @@ const STYLE = `
 .compact svg text { font-size: 20px; }
 .compact svg text.lbl, .compact svg text.link { font-size: 18px; }
 .compact svg text.sm { font-size: 17px; }
+.compact svg text.xs { font-size: 16px; }
 .compact svg text.val, .compact svg text.big { font-size: 22px; }
 .compact .hstats { width: 100%; justify-content: space-between; }
 .compact .hstat { align-items: flex-start; }
@@ -579,6 +588,11 @@ svg .pill { fill: var(--secondary-background-color, #f1f3f4); }
 svg .pill.stop { fill: #dff1ef; }
 svg .valve { fill: var(--card-background-color, #fff); stroke-width: 2; }
 svg .valve-arrow { stroke: var(--primary-text-color); }
+svg .pumpbg { fill: var(--card-background-color, #fff); }
+svg .pump { cursor: pointer; }
+svg .spin { transform-box: fill-box; transform-origin: center; animation: calibra-spin 1.2s linear infinite; }
+@keyframes calibra-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { svg .spin { animation: none; } }
 svg .dim text { opacity: 0.6; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
 .stat { padding: 10px 12px; border-radius: 10px; background: var(--secondary-background-color); cursor: pointer; }

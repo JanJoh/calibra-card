@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0 — 2026-10-24
+
+- Brine and condenser pumps are drawn on their pipes as pump symbols: a ring filled to the speed, the percentage below, and an impeller that spins faster at higher speed (still with reduced motion). The pump rows in the compressor box are gone.
+- The compressor box is shorter; the tank return enters it from below.
+
 ## 0.2.2 — 2026-10-24
 
 - The immersion heater row drops its "steg X av Y" text too; the bar shows the step. With `immersion_step_kw` the row shows the current power instead. The whole row opens the sensor's more-info.

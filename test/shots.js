@@ -10,7 +10,7 @@ const SHOTS = [
 
 (async () => {
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 800, height: 900 }, deviceScaleFactor: 1.5 });
+  const page = await browser.newPage({ viewport: { width: 800, height: 900 }, deviceScaleFactor: 1.5, reducedMotion: "reduce" });
   for (const [mode, theme, width] of SHOTS) {
     await page.goto(`file://${__dirname}/preview.html?mode=${mode}&theme=${theme}&width=${width}`);
     const el = await page.$("#host");

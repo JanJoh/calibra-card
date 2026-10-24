@@ -208,3 +208,14 @@ test("immersion heater steps are drawn like gears", () => {
   assert.deepEqual(off.steps, [false, false, false]);
   assert.equal(off.text, "");
 });
+
+test("brine and condenser pumps are drawn as symbols filled to their speed", () => {
+  const h = html(card());
+  assert.equal(count(h, 'class="pump"'), 2);
+  assert.match(h, /data-entity="sensor.diplomat_inverter_duo_brine_circulation_pump_speed">62 %</);
+  assert.match(h, /data-entity="sensor.diplomat_inverter_duo_condenser_circulation_pump_speed">55 %</);
+  assert.equal(count(h, 'class="spin"'), 2);
+  assert.ok(!h.includes(">Brinepump<"));
+  const idle = html(card({ "sensor.diplomat_inverter_duo_brine_circulation_pump_speed": "0" }));
+  assert.equal(count(idle, 'class="spin"'), 1);
+});
