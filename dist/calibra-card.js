@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.1.0";
+const CARD_VERSION = "0.1.1";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -60,7 +60,7 @@ const T = {
   sv: {
     title: "Värmepump", borehole: "Borrhål", in: "In", out: "Ut", compressor: "Kompressor",
     gearOf: (g, m) => `Växel ${g} av ${m}`, gearOfAllowed: (g, m) => `Växel ${g} av ${m} tillåtna`,
-    stopped: "Står still", brinePump: "Brinepump", condPump: "Kondensorpump", immersion: "Intern elpatron",
+    stopped: "Står still", brinePump: "Brinepump", condPump: "Kondensorpump", immersion: "Intern elpatron", immersionShort: "Elpatron",
     off: "av", on: "på", step: (s) => `steg ${s}`, circuit: "Kylkrets ›", radiators: "Radiatorer", supply: "Fram", ret: "Retur",
     valve: "Ventil →", toHeat: "värme", toTap: "varmvatten", heater: "Beredare", heaterSub: "Egen termostat",
     heaterIdle: "vilar", heaterOn: "värmer", taps: "Kranar", outdoor: "Ute", power: "Effekt nu", price: "Elpris",
@@ -82,7 +82,7 @@ const T = {
   en: {
     title: "Heat pump", borehole: "Borehole", in: "In", out: "Out", compressor: "Compressor",
     gearOf: (g, m) => `Gear ${g} of ${m}`, gearOfAllowed: (g, m) => `Gear ${g} of ${m} allowed`,
-    stopped: "Stopped", brinePump: "Brine pump", condPump: "Condenser pump", immersion: "Immersion heater",
+    stopped: "Stopped", brinePump: "Brine pump", condPump: "Condenser pump", immersion: "Immersion heater", immersionShort: "Immersion",
     off: "off", on: "on", step: (s) => `step ${s}`, circuit: "Refrigerant ›", radiators: "Radiators", supply: "Supply", ret: "Return",
     valve: "Valve →", toHeat: "heating", toTap: "hot water", heater: "Water heater", heaterSub: "Own thermostat",
     heaterIdle: "idle", heaterOn: "heating", taps: "Taps", outdoor: "Outdoor", power: "Power", price: "Price",
@@ -375,7 +375,9 @@ class CalibraCard extends HTMLElement {
     <line x1="185" y1="154" x2="345" y2="154" class="div opt"/>
     ${hpRows.map(([l, v, ent], i) => `${txt(185, 174 + i * 20, l, "lbl opt")}${txt(345, 174 + i * 20, v, "sm opt", ent, "end")}`).join("")}
     ${m.immersion ? `<g class="opt">${m.immersion.on ? `<rect x="179" y="203" width="172" height="20" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
-      ${txt(185, 217, t.immersion, m.immersion.on ? "sm warn" : "lbl")}${txt(345, 217, m.immersion.text, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}</g>` : ""}
+      ${txt(185, 217, t.immersion, m.immersion.on ? "sm warn" : "lbl")}${txt(345, 217, m.immersion.text, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}</g>
+    <g class="short imm-compact">${m.immersion.on ? `<rect x="179" y="166" width="172" height="28" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
+      ${txt(185, 187, t.immersionShort, m.immersion.on ? "lbl warn" : "lbl")}${txt(345, 187, m.immersion.text, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}</g>` : ""}
     ${txt(185, 248, t.circuit, "link")}
   </g>
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — 2026-10-24
+
+- The compact layout (below 560 px) also shows the immersion heater row in the compressor box: "Elpatron av", or highlighted with the active step.
+
 ## 0.1.0 — 2026-10-24
 
 First version:

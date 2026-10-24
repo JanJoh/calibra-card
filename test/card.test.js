@@ -183,3 +183,12 @@ test("helpers", () => {
   assert.equal(tankColor(25).dark, false);
   assert.ok(DEFAULT_ENTITIES.brine_in.startsWith("sensor."));
 });
+
+test("compact mode keeps an immersion heater row", () => {
+  const c = card({ "sensor.immersion_step": "2" });
+  c._compact = true;
+  c._render();
+  const h = html(c);
+  assert.match(h, /class="wrap compact"/);
+  assert.match(h, /class="short imm-compact"[\s\S]*?>Elpatron<[\s\S]*?>steg 2</);
+});
