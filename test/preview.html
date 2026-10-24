@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; padding: 16px; font-family: Roboto, system-ui, sans-serif; display: grid; gap: 16px; }
+  body.light { background: #fafafa; --card-background-color: #fff; --primary-text-color: #212121; --secondary-text-color: #616161;
+    --secondary-background-color: #f2f3f5; --divider-color: #e0e0e0; --primary-color: #03a9f4; }
+  body.dark { background: #111; --card-background-color: #1c1c1c; --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b;
+    --secondary-background-color: #282828; --divider-color: #3a3a3a; --primary-color: #03a9f4; --calibra-rock: #2c3138; --calibra-seg: #3a3f45; --calibra-idle: #4a4f55; }
+  ha-card { display: block; background: var(--card-background-color); border-radius: 12px; border: 1px solid var(--divider-color); }
+</style>
+</head>
+<body>
+<div id="host"></div>
+<script>window.module = undefined;</script>
+<script src="../dist/calibra-card.js"></script>
+<script>
+  // Preview harness: ?mode=heat|hw|stop|idle&theme=light|dark&width=760&detail=1
+  const q = new URLSearchParams(location.search);
+  document.body.className = q.get("theme") || "light";
+  document.getElementById("host").style.width = (q.get("width") || 760) + "px";
+  const P = "diplomat_inverter_duo";
+  const base = {
+    [`sensor.${P}_outdoor_temperature`]: "9.56", [`sensor.${P}_first_prioritised_demand`]: "Heat",
+    [`binary_sensor.${P}_compressor_control_signal`]: "on", [`sensor.${P}_compressor_speed_percent`]: "38",
+    [`sensor.${P}_compressor_speed_rpm`]: "2940", [`sensor.${P}_compressor_current_gear`]: "4",
+    [`sensor.${P}_compressor_available_gears`]: "10", [`number.${P}_maximum_allowed_gear_in_heating`]: "10",
+    [`number.${P}_minimum_allowed_gear_in_heating`]: "1",
+    [`number.${P}_maximum_allowed_gear_in_tap_water`]: "7", [`number.${P}_minimum_allowed_gear_in_tap_water`]: "5",
+    [`sensor.${P}_compressor_temporarily_blocked`]: "0", [`sensor.${P}_brine_in_temperature`]: "2.1",
+    [`sensor.${P}_brine_out_temperature`]: "-0.4", [`sensor.${P}_brine_circulation_pump_speed`]: "62",
+    [`sensor.${P}_condenser_circulation_pump_speed`]: "55", [`sensor.${P}_condenser_in_temperature`]: "28.3",
+    [`sensor.${P}_condenser_out_temperature`]: "33.1", [`sensor.${P}_tap_water_top_temperature`]: "52.5",
+    [`sensor.${P}_tap_water_lower_temperature`]: "51.8", [`binary_sensor.${P}_heating_season_active`]: "on",
+    [`number.${P}_heating_season_stop_temperature`]: "15", [`sensor.${P}_heating_season_integral_value`]: "-150",
+    [`binary_sensor.${P}_sum_alarm`]: "off", [`sensor.${P}_high_pressure_side`]: "16.02", [`sensor.${P}_low_pressure_side`]: "6.74",
+    [`sensor.${P}_bubble_point`]: "27.41", [`sensor.${P}_dew_point`]: "1.25", [`sensor.${P}_compressor_operating_hours`]: "658",
+    [`sensor.${P}_tap_water_operating_hours`]: "113", [`binary_sensor.${P}_power_input_phase_detection_alarm`]: "off",
+    "sensor.vp_power": "1420", "binary_sensor.valve": "off", "sensor.heater_power": "0", "sensor.price": "1.2227",
+    "sensor.imm1": "16", "sensor.imm2": "12", "input_boolean.sauna": "off", "sensor.immersion": "0",
+  };
+  const modes = {
+    heat: {},
+    hw: { [`sensor.${P}_first_prioritised_demand`]: "Hot water", "binary_sensor.valve": "on", [`number.${P}_maximum_allowed_gear_in_tap_water`]: "3",
+      [`sensor.${P}_compressor_current_gear`]: "3", "input_boolean.sauna": "on", "sensor.heater_power": "2800", "sensor.vp_power": "4310",
+      [`sensor.${P}_tap_water_top_temperature`]: "44", [`sensor.${P}_tap_water_lower_temperature`]: "38.5", "sensor.immersion": "1" },
+    stop: { [`binary_sensor.${P}_heating_season_active`]: "off", [`binary_sensor.${P}_compressor_control_signal`]: "off",
+      [`sensor.${P}_first_prioritised_demand`]: "No demand", [`sensor.${P}_outdoor_temperature`]: "18.4", [`sensor.${P}_brine_circulation_pump_speed`]: "0",
+      [`sensor.${P}_condenser_circulation_pump_speed`]: "0", "sensor.vp_power": "14" },
+    idle: { [`binary_sensor.${P}_compressor_control_signal`]: "off", [`sensor.${P}_first_prioritised_demand`]: "No demand",
+      [`sensor.${P}_brine_circulation_pump_speed`]: "0", [`sensor.${P}_condenser_circulation_pump_speed`]: "42", "sensor.vp_power": "16",
+      [`sensor.${P}_compressor_current_gear`]: "0", [`sensor.${P}_compressor_speed_percent`]: "0", [`sensor.${P}_compressor_speed_rpm`]: "0" },
+  };
+  const st = { ...base, ...(modes[q.get("mode") || "heat"]) };
+  const states = {};
+  for (const [k, v] of Object.entries(st)) states[k] = { state: v, attributes: k === "sensor.price" ? { unit_of_measurement: "kr/kWh" } : {} };
+  const c = document.createElement("calibra-card");
+  c.setConfig({
+    borehole_depth: 88,
+    entities: { power: "sensor.vp_power", valve: "binary_sensor.valve", heater_power: "sensor.heater_power", price: "sensor.price",
+      immersion: "sensor.immersion", immersion_hours: ["sensor.imm1", "sensor.imm2"], energy: "sensor.e1", heater_energy: "sensor.e2" },
+    notices: [{ entity: "input_boolean.sauna", text: "Bastuvakten begränsar kompressorn." }],
+  });
+  c._stats = { pump: 9.8, heater: 1.9, brine: 1.6 };
+  c._statsAt = Date.now();
+  if (q.get("detail")) c._detail = true;
+  c.hass = { states, locale: { language: "sv" } };
+  if (+(q.get("width") || 760) < 560) { c._compact = true; c._render(); }
+  document.getElementById("host").appendChild(c);
+</script>
+</body>
+</html>
