@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 — 2026-10-24
+
+- Empty gear and immersion segments, idle pipes and the borehole use theme-neutral translucent greys, so they stay visible on Home Assistant's default light and dark backgrounds (they almost vanished on the default light theme).
+
 ## 0.3.0 — 2026-10-24
 
 - Brine and condenser pumps are drawn on their pipes as pump symbols: a ring filled to the speed, the percentage below, and an impeller that spins faster at higher speed (still with reduced motion). The pump rows in the compressor box are gone.

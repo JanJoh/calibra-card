@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.3.0";
+const CARD_VERSION = "0.3.1";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -52,7 +52,7 @@ const COLORS = {
   brineIn: "#2f6fb3", brineOut: "#8db8e3",
   heat: "#d9622b", heatRet: "#f0a77f",
   hw: "#d0453a", hwRet: "#ec9a92",
-  tap: "#d0453a", idle: "var(--calibra-idle, #c9cdd2)",
+  tap: "#d0453a", idle: "var(--calibra-idle, rgba(127, 127, 127, 0.45))",
   gear: "#2f6fb3", gearLimited: "#b26b00", immersion: "#d9822b",
 };
 
@@ -346,7 +346,7 @@ class CalibraCard extends HTMLElement {
     // Gear segments
     const segW = (160 - 3 * (m.segs.length - 1)) / m.segs.length;
     const segs = m.segs.map((s, i) => {
-      const fill = s === "on" ? c.gear : s === "on-limited" ? c.gearLimited : s === "blocked" ? "url(#hatch)" : "var(--calibra-seg, #e3e6ea)";
+      const fill = s === "on" ? c.gear : s === "on-limited" ? c.gearLimited : s === "blocked" ? "url(#hatch)" : "var(--calibra-seg, rgba(127, 127, 127, 0.28))";
       return `<rect x="${185 + i * (segW + 3)}" y="88" width="${segW.toFixed(2)}" height="14" rx="3" fill="${fill}"/>`;
     }).join("");
 
@@ -354,7 +354,7 @@ class CalibraCard extends HTMLElement {
     // Immersion heater steps, drawn like the compressor's gears
     const immBar = (x, y, h) => {
       const st = m.immersion.steps, w = (160 - 3 * (st.length - 1)) / st.length;
-      return st.map((on, i) => `<rect x="${(x + i * (w + 3)).toFixed(2)}" y="${y}" width="${w.toFixed(2)}" height="${h}" rx="3" fill="${on ? c.immersion : "var(--calibra-seg, #e3e6ea)"}"/>`).join("");
+      return st.map((on, i) => `<rect x="${(x + i * (w + 3)).toFixed(2)}" y="${y}" width="${w.toFixed(2)}" height="${h}" rx="3" fill="${on ? c.immersion : "var(--calibra-seg, rgba(127, 127, 127, 0.28))"}"/>`).join("");
     };
     // Pump symbol: a ring filled to the speed, with an impeller that spins while running
     const pumpSym = (cx, cy, pct, color, ent) => {
@@ -362,7 +362,7 @@ class CalibraCard extends HTMLElement {
       const spin = k > 0 ? ` style="animation-duration:${(2.4 - 1.8 * k).toFixed(2)}s"` : "";   // faster at higher speed
       return `<g class="pump" data-entity="${esc(ent)}">
         <circle cx="${cx}" cy="${cy}" r="${r}" class="pumpbg"/>
-        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--calibra-seg, #e3e6ea)" stroke-width="3"/>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--calibra-seg, rgba(127, 127, 127, 0.28))" stroke-width="3"/>
         <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${k > 0 ? color : "transparent"}" stroke-width="3"
           stroke-dasharray="${(circ * k).toFixed(1)} ${circ.toFixed(1)}" transform="rotate(-90 ${cx} ${cy})"/>
         <g class="${k > 0 ? "spin" : ""}"${spin}><path d="M${cx - 5} ${cy - 5}l10 5-10 5z" fill="${k > 0 ? color : "var(--calibra-idle, #c9cdd2)"}"/></g>
@@ -372,7 +372,7 @@ class CalibraCard extends HTMLElement {
 <svg viewBox="0 34 712 296" role="img" aria-label="${esc(t.title)}">
   <defs>
     <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <rect width="6" height="6" fill="var(--card-background-color, #fff)"/><rect width="3" height="6" fill="var(--calibra-seg, #e3e6ea)"/>
+      <rect width="6" height="6" fill="var(--card-background-color, #fff)"/><rect width="3" height="6" fill="var(--calibra-seg, rgba(127, 127, 127, 0.28))"/>
     </pattern>
     <linearGradient id="${tankId}" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="${m.tankTopC.css}"/><stop offset="1" stop-color="${m.tankBotC.css}"/>
@@ -381,7 +381,7 @@ class CalibraCard extends HTMLElement {
 
   ${txt(0, 48, t.borehole, "lbl strong")}
   <rect x="0" y="60" width="44" height="10" fill="#ece4d6"/><line x1="0" y1="61" x2="44" y2="61" stroke="#8c7b62" stroke-width="2"/>
-  <rect x="0" y="72" width="44" height="230" fill="var(--calibra-rock, #dde2e8)"/>
+  <rect x="0" y="72" width="44" height="230" fill="var(--calibra-rock, rgba(127, 127, 127, 0.18))"/>
   ${depth ? txt(0, 318, `${depth} m`, "lbl") : ""}
   ${pipe(16, 160, 16, 292, col.bOut)}${pipe(30, 120, 30, 292, col.bIn)}${pipe(16, 292, 30, 292, col.bOut)}
   ${pipe(30, 120, 170, 120, col.bIn)}${pipe(16, 160, 170, 160, col.bOut)}
