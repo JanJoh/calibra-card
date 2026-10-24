@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.2.0";
+const CARD_VERSION = "0.2.1";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -59,18 +59,17 @@ const COLORS = {
 const T = {
   sv: {
     title: "Värmepump", borehole: "Borrhål", in: "In", out: "Ut", compressor: "Kompressor",
-    gearOf: (g, m) => `Växel ${g} av ${m}`, gearOfAllowed: (g, m) => `Växel ${g} av ${m} tillåtna`,
     stopped: "Står still", brinePump: "Brinepump", condPump: "Kondensorpump", immersion: "Intern elpatron", immersionShort: "Elpatron",
     off: "av", on: "på", step: (s) => `steg ${s}`, stepOf: (s, n) => `steg ${s} av ${n}`, circuit: "Kylkrets ›", radiators: "Radiatorer", supply: "Fram", ret: "Retur",
     valve: "Ventil →", toHeat: "värme", toTap: "varmvatten", heater: "Beredare", heaterSub: "Egen termostat",
     heaterIdle: "vilar", heaterOn: "värmer", taps: "Kranar", outdoor: "Ute", power: "Effekt nu", price: "Elpris",
-    heatStopOn: (t) => `Värmestopp på${t}`, heatStopOff: (t) => `Värmestopp av${t}`, limit: (t) => ` (${t})`, gearShort: (g, m) => `Växel ${g}/${m}`,
+    heatStopOn: (t) => `Värmestopp på${t}`, heatStopOff: (t) => `Värmestopp av${t}`, limit: (t) => ` (${t})`,
     pumpToday: "Värmepump el idag", heaterToday: "Beredare idag", brineMin: "Lägsta brine idag", immHours: "Intern elpatron, totalt",
     back: "‹ Tillbaka", hp: "Högtryck (kondensor)", lp: "Lågtryck (förångare)", bubble: "Bubbelpunkt", dew: "Daggpunkt",
     compHours: "Kompressor, drifttid", tapHours: "Varmvatten, drifttid", gearsHeat: "Tillåtna växlar, värme",
     gearsTap: "Tillåtna växlar, varmvatten", blocked: "Tillfälligt blockerad", yes: "Ja", no: "Nej",
     alarm: "Samlingslarm", noAlarm: "Inget", active: "Aktivt", phaseAlarm: "Fasdetektering", ok: "OK", fault: "Fel",
-    whyDemand: (d, g, m, lim) => `${d} · växel ${g} av ${m} tillåtna${lim ? "" : " · ingen begränsning"}`,
+    whyDemand: (d, lim) => `${d}${lim ? "" : " · ingen begränsning"}`,
     whyIdle: (i) => `Inget behov just nu${i}`, integral: (v) => ` · gradminuter ${v}`,
     whyHeatStop: (o, s) => `Värmestopp: ute ${o} är över gränsen ${s}. Radiatorerna får ingen värme, bara varmvatten laddas vid behov.`,
     whyBlocked: "Kompressorn är tillfälligt blockerad.", whyImmersion: "Intern elpatron har gått in.",
@@ -81,18 +80,17 @@ const T = {
   },
   en: {
     title: "Heat pump", borehole: "Borehole", in: "In", out: "Out", compressor: "Compressor",
-    gearOf: (g, m) => `Gear ${g} of ${m}`, gearOfAllowed: (g, m) => `Gear ${g} of ${m} allowed`,
     stopped: "Stopped", brinePump: "Brine pump", condPump: "Condenser pump", immersion: "Immersion heater", immersionShort: "Immersion",
     off: "off", on: "on", step: (s) => `step ${s}`, stepOf: (s, n) => `step ${s} of ${n}`, circuit: "Refrigerant ›", radiators: "Radiators", supply: "Supply", ret: "Return",
     valve: "Valve →", toHeat: "heating", toTap: "hot water", heater: "Water heater", heaterSub: "Own thermostat",
     heaterIdle: "idle", heaterOn: "heating", taps: "Taps", outdoor: "Outdoor", power: "Power", price: "Price",
-    heatStopOn: (t) => `Heating stop on${t}`, heatStopOff: (t) => `Heating stop off${t}`, limit: (t) => ` (${t})`, gearShort: (g, m) => `Gear ${g}/${m}`,
+    heatStopOn: (t) => `Heating stop on${t}`, heatStopOff: (t) => `Heating stop off${t}`, limit: (t) => ` (${t})`,
     pumpToday: "Heat pump today", heaterToday: "Water heater today", brineMin: "Lowest brine today", immHours: "Immersion heater, total",
     back: "‹ Back", hp: "High pressure (condenser)", lp: "Low pressure (evaporator)", bubble: "Bubble point", dew: "Dew point",
     compHours: "Compressor hours", tapHours: "Hot water hours", gearsHeat: "Allowed gears, heating",
     gearsTap: "Allowed gears, hot water", blocked: "Temporarily blocked", yes: "Yes", no: "No",
     alarm: "Sum alarm", noAlarm: "None", active: "Active", phaseAlarm: "Phase detection", ok: "OK", fault: "Fault",
-    whyDemand: (d, g, m, lim) => `${d} · gear ${g} of ${m} allowed${lim ? "" : " · no limit"}`,
+    whyDemand: (d, lim) => `${d}${lim ? "" : " · no limit"}`,
     whyIdle: (i) => `No demand right now${i}`, integral: (v) => ` · degree minutes ${v}`,
     whyHeatStop: (o, s) => `Heating stop: outdoor ${o} is above the limit ${s}. Only hot water is made when needed.`,
     whyBlocked: "The compressor is temporarily blocked.", whyImmersion: "The immersion heater is on.",
@@ -243,7 +241,7 @@ class CalibraCard extends HTMLElement {
     let why, tone = "neutral";
     if (alarm) { why = t.whyAlarm; tone = "alert"; }
     else if (heatStop && !running) { why = t.whyHeatStop(fmt(outdoor, 1, "°C", lang), fmt(stopT, 0, "°C", lang)); tone = "stop"; }
-    else if (running) why = t.whyDemand(demand, gear, maxAllowed, limited || notices.length);
+    else if (running) why = t.whyDemand(demand, limited || notices.length);
     else why = t.whyIdle(n("integral") !== null ? t.integral(fmt(n("integral"), 0, "", lang)) : "");
     const extra = [...notices];
     if (blocked) extra.push(t.whyBlocked);
@@ -276,9 +274,9 @@ class CalibraCard extends HTMLElement {
       brineIn: fmt(n("brine_in"), 1, "°", lang), brineOut: fmt(n("brine_out"), 1, "°", lang),
       brineDt: n("brine_in") !== null && n("brine_out") !== null ? fmt(n("brine_in") - n("brine_out"), 1, "", lang) : "–",
       brineOn, heatOn, hwOn, valveTap, segs, limited: limited || notices.length > 0,
-      gearShort: running ? t.gearShort(gear, maxAllowed) : t.stopped,
-      gearText: running ? (limited ? t.gearOfAllowed(gear, maxAllowed) : t.gearOf(gear, gears)) : t.stopped,
-      speed: `${fmt(n("compressor_pct"), 0, "%", lang)} · ${fmt(n("compressor_rpm"), 0, "rpm", lang)}`,
+      // The gear bar shows used and allowed gears; the text line only carries speed.
+      compText: running ? `${fmt(n("compressor_pct"), 0, "%", lang)} · ${fmt(n("compressor_rpm"), 0, "rpm", lang)}` : t.stopped,
+      compShort: running ? fmt(n("compressor_pct"), 0, "%", lang) : t.stopped,
       brinePump: fmt(n("brine_pump"), 0, "%", lang), condPump: fmt(n("condenser_pump"), 0, "%", lang),
       immersion: e.immersion ? this._immersionModel(immersion) : null,
       supply: heatOn || heatStop ? fmt(n("condenser_out"), 1, "°", lang) : fmt(n("condenser_out"), 1, "°", lang),
@@ -390,17 +388,16 @@ class CalibraCard extends HTMLElement {
     <rect x="170" y="56" width="190" height="248" rx="12" class="box hpbox"/>
     ${txt(185, 78, t.compressor, "lbl")}
     ${segs}
-    ${txt(185, 124, m.gearText, "val big full", e.gear)}${txt(185, 128, m.gearShort, "val big short", e.gear)}
-    ${txt(185, 142, m.speed, "lbl opt", e.compressor_pct)}
-    <line x1="185" y1="154" x2="345" y2="154" class="div opt"/>
-    ${hpRows.map(([l, v, ent], i) => `${txt(185, 174 + i * 20, l, "lbl opt")}${txt(345, 174 + i * 20, v, "sm opt", ent, "end")}`).join("")}
-    ${m.immersion ? `<g class="opt">${m.immersion.on ? `<rect x="179" y="201" width="172" height="38" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
-      ${txt(185, 215, t.immersion, m.immersion.on ? "sm warn" : "lbl")}${txt(345, 215, m.immersion.text, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}
-      ${immBar(185, 223, 9)}</g>
+    ${txt(185, 126, m.compText, "val full", e.compressor_pct)}${txt(185, 130, m.compShort, "val big short", e.compressor_pct)}
+    <line x1="185" y1="142" x2="345" y2="142" class="div opt"/>
+    ${hpRows.map(([l, v, ent], i) => `${txt(185, 162 + i * 20, l, "lbl opt")}${txt(345, 162 + i * 20, v, "sm opt", ent, "end")}`).join("")}
+    ${m.immersion ? `<g class="opt">${m.immersion.on ? `<rect x="179" y="189" width="172" height="38" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
+      ${txt(185, 203, t.immersion, m.immersion.on ? "sm warn" : "lbl")}${txt(345, 203, m.immersion.text, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}
+      ${immBar(185, 211, 9)}</g>
     <g class="short imm-compact">${m.immersion.on ? `<rect x="179" y="162" width="172" height="46" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
       ${txt(185, 183, t.immersionShort, m.immersion.on ? "lbl warn" : "lbl")}${txt(345, 183, m.immersion.short, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}
       ${immBar(185, 192, 10)}</g>` : ""}
-    ${txt(185, 262, t.circuit, "link")}
+    ${txt(185, 252, t.circuit, "link")}
   </g>
 
   ${pipe(360, 78, 560, 78, col.heatRet)}

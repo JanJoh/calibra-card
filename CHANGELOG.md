@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 — 2026-10-24
+
+- Removed the "Växel X av Y (tillåtna)" text from the compressor box and the explanation line; the gear bar already shows used and allowed gears. The compressor speed takes its place, and the box is tighter.
+
 ## 0.2.0 — 2026-10-24
 
 - The internal immersion heater gets a step bar like the compressor's gears, in both layouts: "steg 1 av 3".

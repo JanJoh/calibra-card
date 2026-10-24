@@ -67,7 +67,9 @@ test("heating: radiator branch live, valve points right, demand translated", () 
   assert.equal(m.heatOn, true);
   assert.equal(m.hwOn, false);
   assert.equal(m.chip.text, "Värme");
-  assert.equal(m.gearText, "Växel 4 av 10");
+  assert.match(m.compText, /^38 % · 2.940 rpm$/);
+  assert.equal(m.why, "Värme · ingen begränsning");
+  assert.ok(!html(c).includes("Växel"));
   assert.match(m.why, /ingen begränsning/);
   assert.match(html(c), /rotate\(0\)/);
   assert.match(html(c), /1,42 kW/);
@@ -86,7 +88,7 @@ test("hot water with the sauna guard: hot water branch, limited gears hatched, n
   const m = c._model();
   assert.equal(m.hwOn, true);
   assert.equal(m.heatOn, false);
-  assert.equal(m.gearText, "Växel 3 av 3 tillåtna");
+  assert.ok(!m.why.includes("växel"));
   assert.deepEqual(m.segs.slice(0, 4), ["on-limited", "on-limited", "on-limited", "blocked"]);
   assert.equal(m.tone, "warn");
   assert.match(m.why, /Bastuvakten begränsar/);
@@ -116,7 +118,7 @@ test("idle shows degree minutes; pipes are grey", () => {
     [`sensor.${P}_brine_circulation_pump_speed`]: "0",
   });
   const m = c._model();
-  assert.equal(m.gearText, "Står still");
+  assert.equal(m.compText, "Står still");
   assert.match(m.why, /gradminuter −150|gradminuter -150/);
   assert.equal(m.brineOn, false);
   assert.ok(!html(c).includes('stroke="#2f6fb3"'));
@@ -163,7 +165,7 @@ test("clicking a value opens more-info for its entity", () => {
 
 test("English labels", () => {
   const m = card({}, {}, "en")._model();
-  assert.equal(m.gearText, "Gear 4 of 10");
+  assert.equal(m.why, "Heat · no limit");
 });
 
 test("only relevant state changes re-render", () => {
