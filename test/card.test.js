@@ -193,16 +193,18 @@ test("compact mode keeps an immersion heater row", () => {
   c._render();
   const h = html(c);
   assert.match(h, /class="wrap compact"/);
-  assert.match(h, /class="short imm-compact"[\s\S]*?>Elpatron<[\s\S]*?>steg 2</);
+  assert.match(h, /class="short imm-compact" data-entity="sensor.immersion_step"[\s\S]*?>Elpatron</);
+  assert.equal(count(h, 'fill="#d9822b"'), 4);
 });
 
 test("immersion heater steps are drawn like gears", () => {
   const c = card({ "sensor.immersion_step": "2" }, { immersion_steps: 3, immersion_step_kw: 3 });
   const m = c._model();
   assert.deepEqual(m.immersion.steps, [true, true, false]);
-  assert.equal(m.immersion.text, "steg 2 av 3 · 6 kW");
+  assert.equal(m.immersion.text, "6 kW");
+  assert.ok(!html(c).includes("steg"));
   assert.equal(count(html(c), 'fill="#d9822b"'), 4);   // two steps, full and compact bars
   const off = card()._model().immersion;
   assert.deepEqual(off.steps, [false, false, false]);
-  assert.equal(off.text, "av");
+  assert.equal(off.text, "");
 });

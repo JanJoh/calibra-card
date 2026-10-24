@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.2.1";
+const CARD_VERSION = "0.2.2";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -60,7 +60,7 @@ const T = {
   sv: {
     title: "Värmepump", borehole: "Borrhål", in: "In", out: "Ut", compressor: "Kompressor",
     stopped: "Står still", brinePump: "Brinepump", condPump: "Kondensorpump", immersion: "Intern elpatron", immersionShort: "Elpatron",
-    off: "av", on: "på", step: (s) => `steg ${s}`, stepOf: (s, n) => `steg ${s} av ${n}`, circuit: "Kylkrets ›", radiators: "Radiatorer", supply: "Fram", ret: "Retur",
+    off: "av", on: "på", circuit: "Kylkrets ›", radiators: "Radiatorer", supply: "Fram", ret: "Retur",
     valve: "Ventil →", toHeat: "värme", toTap: "varmvatten", heater: "Beredare", heaterSub: "Egen termostat",
     heaterIdle: "vilar", heaterOn: "värmer", taps: "Kranar", outdoor: "Ute", power: "Effekt nu", price: "Elpris",
     heatStopOn: (t) => `Värmestopp på${t}`, heatStopOff: (t) => `Värmestopp av${t}`, limit: (t) => ` (${t})`,
@@ -81,7 +81,7 @@ const T = {
   en: {
     title: "Heat pump", borehole: "Borehole", in: "In", out: "Out", compressor: "Compressor",
     stopped: "Stopped", brinePump: "Brine pump", condPump: "Condenser pump", immersion: "Immersion heater", immersionShort: "Immersion",
-    off: "off", on: "on", step: (s) => `step ${s}`, stepOf: (s, n) => `step ${s} of ${n}`, circuit: "Refrigerant ›", radiators: "Radiators", supply: "Supply", ret: "Return",
+    off: "off", on: "on", circuit: "Refrigerant ›", radiators: "Radiators", supply: "Supply", ret: "Return",
     valve: "Valve →", toHeat: "heating", toTap: "hot water", heater: "Water heater", heaterSub: "Own thermostat",
     heaterIdle: "idle", heaterOn: "heating", taps: "Taps", outdoor: "Outdoor", power: "Power", price: "Price",
     heatStopOn: (t) => `Heating stop on${t}`, heatStopOff: (t) => `Heating stop off${t}`, limit: (t) => ` (${t})`,
@@ -302,13 +302,9 @@ class CalibraCard extends HTMLElement {
     const n = Math.max(1, Math.round(this._config.immersion_steps ?? 3));
     const step = !on ? 0 : raw === "on" ? 1 : Math.min(n, Math.max(1, Math.round(parseFloat(raw) || 1)));
     const kw = this._config.immersion_step_kw;
-    const power = on && kw ? ` · ${fmt(step * kw, 0, "kW", lang)}` : "";
-    return {
-      on,
-      steps: Array.from({ length: n }, (_, i) => i < step),
-      text: on ? `${t.stepOf(step, n)}${power}` : t.off,
-      short: on ? `${t.step(step)}${power}` : t.off,
-    };
+    // The bar shows the step; the text only adds power when kW per step is configured.
+    const power = on && kw ? fmt(step * kw, 0, "kW", lang) : "";
+    return { on, step, steps: Array.from({ length: n }, (_, i) => i < step), text: power, short: power };
   }
 
   _detailModel() {
@@ -391,10 +387,10 @@ class CalibraCard extends HTMLElement {
     ${txt(185, 126, m.compText, "val full", e.compressor_pct)}${txt(185, 130, m.compShort, "val big short", e.compressor_pct)}
     <line x1="185" y1="142" x2="345" y2="142" class="div opt"/>
     ${hpRows.map(([l, v, ent], i) => `${txt(185, 162 + i * 20, l, "lbl opt")}${txt(345, 162 + i * 20, v, "sm opt", ent, "end")}`).join("")}
-    ${m.immersion ? `<g class="opt">${m.immersion.on ? `<rect x="179" y="189" width="172" height="38" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
+    ${m.immersion ? `<g class="opt" data-entity="${esc(e.immersion)}">${m.immersion.on ? `<rect x="179" y="189" width="172" height="38" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
       ${txt(185, 203, t.immersion, m.immersion.on ? "sm warn" : "lbl")}${txt(345, 203, m.immersion.text, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}
       ${immBar(185, 211, 9)}</g>
-    <g class="short imm-compact">${m.immersion.on ? `<rect x="179" y="162" width="172" height="46" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
+    <g class="short imm-compact" data-entity="${esc(e.immersion)}">${m.immersion.on ? `<rect x="179" y="162" width="172" height="46" rx="6" fill="var(--calibra-warn-bg, #fff4dc)"/>` : ""}
       ${txt(185, 183, t.immersionShort, m.immersion.on ? "lbl warn" : "lbl")}${txt(345, 183, m.immersion.short, m.immersion.on ? "sm warn strong" : "sm", e.immersion, "end")}
       ${immBar(185, 192, 10)}</g>` : ""}
     ${txt(185, 252, t.circuit, "link")}

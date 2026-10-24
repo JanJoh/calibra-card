@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 — 2026-10-24
+
+- The immersion heater row drops its "steg X av Y" text too; the bar shows the step. With `immersion_step_kw` the row shows the current power instead. The whole row opens the sensor's more-info.
+
 ## 0.2.1 — 2026-10-24
 
 - Removed the "Växel X av Y (tillåtna)" text from the compressor box and the explanation line; the gear bar already shows used and allowed gears. The compressor speed takes its place, and the box is tighter.

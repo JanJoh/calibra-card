@@ -75,7 +75,7 @@ notices:
 | `entities.valve` | Binary sensor that is `on` while the valve points to hot water. Without it the card infers the valve position from the demand. |
 | `entities.immersion` | Binary sensor (`on`) or step sensor (`> 0`) for the internal immersion heater. Thermiagenesis has these entities, but they are disabled by default. |
 | `immersion_steps` | Number of immersion heater steps drawn as a bar like the compressor's gears (default `3`). |
-| `immersion_step_kw` | Optional kW per step; adds e.g. "· 6 kW" next to the active step. |
+| `immersion_step_kw` | Optional kW per step; shows the current power, e.g. "6 kW", next to the bar. |
 | `notices` | A list of `{entity, state (default "on"), text}`. Each text is added to the explanation line while its entity is in that state. |
 
 "Today" values (energy and the lowest brine temperature) come from long-term statistics and refresh every 5 minutes.
