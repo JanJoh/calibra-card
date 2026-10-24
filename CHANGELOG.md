@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 — 2026-10-24
+
+- New card in the same file: `custom:calibra-signature-card`. It plots the energy signature, daily kWh against daily mean outdoor temperature from long-term statistics, with one coloured series and fitted curve per period, so an old and a new heat pump can be compared at the same temperature.
+
 ## 0.3.1 — 2026-10-24
 
 - Empty gear and immersion segments, idle pipes and the borehole use theme-neutral translucent greys, so they stay visible on Home Assistant's default light and dark backgrounds (they almost vanished on the default light theme).

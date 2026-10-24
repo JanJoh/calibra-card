@@ -81,6 +81,29 @@ notices:
 
 "Today" values (energy and the lowest brine temperature) come from long-term statistics and refresh every 5 minutes.
 
+## Energy signature card
+
+`custom:calibra-signature-card`, in the same file, compares the heat pump's daily electricity use against the daily mean outdoor temperature across periods, for example before and after replacing the pump. It reads hourly long-term statistics from the recorder, keeps only complete days, and draws:
+- one series per period;
+- a fitted curve per period;
+- the value at a reference temperature, used as the finding.
+
+```yaml
+type: custom:calibra-signature-card
+title: Gammal mot ny värmepump
+energy: sensor.heat_pump_energy        # kWh, total_increasing
+temperature: sensor.netatmo_outdoor_temperature            # °C, measurement
+start: "2025-10-01"
+reference: 5                                               # °C, where the finding is read
+periods:
+  - name: Gammal pump
+    end: "2026-06-15"
+  - name: Ny pump
+    start: "2026-09-25"
+```
+
+The last period is drawn as the highlighted one. A curve's value at the reference temperature is shown only when that period has data on both sides of it.
+
 ## Development
 
 ```sh

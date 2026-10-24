@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.3.1";
+const CARD_VERSION = "0.4.0";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -610,6 +610,216 @@ svg .dim text { opacity: 0.6; }
 .hr { height: 1px; background: var(--divider-color); }
 `;
 
+// ---------------------------------------------------------------------------------------
+// Energy signature: daily electricity use against daily mean outdoor temperature, one
+// series per period (e.g. the old heat pump and the new one), from long-term statistics.
+
+const SIG_COLORS = ["var(--calibra-sig-old, #9e9e9e)", "var(--calibra-sig-new, #2f6fb3)", "#d9622b", "#4f8f36"];
+
+// Hourly statistics → one row per local day: kWh used and mean temperature.
+// Only complete days count: 24 hours of energy and at least 20 hours of temperature.
+function aggregateDays(energyRows, tempRows) {
+  const days = new Map();
+  const day = (ms) => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const get = (k) => days.get(k) || days.set(k, { kwh: 0, eh: 0, ts: 0, th: 0 }).get(k);
+  for (const r of energyRows || []) {
+    if (r.change === null || r.change === undefined) continue;
+    const v = get(day(r.start));
+    v.kwh += r.change;
+    v.eh += 1;
+  }
+  for (const r of tempRows || []) {
+    if (r.mean === null || r.mean === undefined) continue;
+    const v = get(day(r.start));
+    v.ts += r.mean;
+    v.th += 1;
+  }
+  return [...days.entries()]
+    .filter(([, v]) => v.eh >= 24 && v.th >= 20 && v.kwh >= 0)
+    .map(([date, v]) => ({ date, kwh: v.kwh, t: v.ts / v.th }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Least-squares y = a + b·t + c·t² (falls back to a straight line for narrow ranges).
+function fitQuad(points) {
+  const n = points.length;
+  if (n < 3) return null;
+  let s1 = 0, s2 = 0, s3 = 0, s4 = 0, y0 = 0, y1 = 0, y2 = 0;
+  for (const p of points) {
+    const t = p.t, t2 = t * t;
+    s1 += t; s2 += t2; s3 += t2 * t; s4 += t2 * t2; y0 += p.kwh; y1 += p.kwh * t; y2 += p.kwh * t2;
+  }
+  const det = (a, b, c, d, e, f, g, h, i) => a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+  const D = det(n, s1, s2, s1, s2, s3, s2, s3, s4);
+  if (Math.abs(D) < 1e-9) return null;
+  const a = det(y0, s1, s2, y1, s2, s3, y2, s3, s4) / D;
+  const b = det(n, y0, s2, s1, y1, s3, s2, y2, s4) / D;
+  const c = det(n, s1, y0, s1, s2, y1, s2, s3, y2) / D;
+  return (t) => a + b * t + c * t * t;
+}
+
+function inPeriod(date, p) {
+  return (!p.start || date >= String(p.start)) && (!p.end || date < String(p.end));
+}
+
+class CalibraSignatureCard extends HTMLElement {
+  static getStubConfig() {
+    return {
+      energy: "sensor.heat_pump_energy",
+      temperature: `sensor.${TG}_outdoor_temperature`,
+      start: "2025-10-01",
+      periods: [{ name: "Gammal pump", end: "2026-06-15" }, { name: "Ny pump", start: "2026-09-25" }],
+    };
+  }
+
+  setConfig(config) {
+    if (!config?.energy || !config?.temperature) throw new Error("energy and temperature are required");
+    if (!Array.isArray(config.periods) || !config.periods.length) throw new Error("periods must be a non-empty list");
+    this._config = { reference: 5, title: null, ...config };
+    this._days = null;
+    this._fetchedAt = 0;
+    this._render();
+  }
+
+  set hass(hass) {
+    const first = !this._hass;
+    this._hass = hass;
+    if (first) this._render();
+    if (Date.now() - this._fetchedAt > 60 * 60 * 1000) this._fetch();
+  }
+
+  getCardSize() { return 6; }
+
+  getGridOptions() { return { columns: "full", min_columns: 6, rows: "auto" }; }
+
+  async _fetch() {
+    if (!this._hass?.callWS) return;
+    this._fetchedAt = Date.now();
+    const c = this._config;
+    try {
+      const r = await this._hass.callWS({
+        type: "recorder/statistics_during_period",
+        start_time: new Date(c.start || Date.now() - 365 * 864e5).toISOString(),
+        statistic_ids: [c.energy, c.temperature],
+        period: "hour",
+        types: ["change", "mean"],
+      });
+      this._days = aggregateDays(r[c.energy], r[c.temperature]);
+      this._error = null;
+    } catch (err) {
+      this._error = String(err?.message || err);
+    }
+    this._render();
+  }
+
+  _model() {
+    const c = this._config, days = this._days || [];
+    const series = c.periods.map((p, i) => {
+      const pts = days.filter((d) => inPeriod(d.date, p));
+      const f = pts.length >= 5 ? fitQuad(pts) : null;
+      const lo = pts.length ? Math.min(...pts.map((d) => d.t)) : null;
+      const hi = pts.length ? Math.max(...pts.map((d) => d.t)) : null;
+      const covers = f && lo <= c.reference && hi >= c.reference;
+      return { name: p.name || `Period ${i + 1}`, color: p.color || SIG_COLORS[i % SIG_COLORS.length], pts, f, lo, hi,
+        atRef: covers ? f(c.reference) : null, accent: i === c.periods.length - 1 };
+    });
+    return { series };
+  }
+
+  _svg(m) {
+    const c = this._config, lang = (this._hass?.locale?.language || "sv").startsWith("sv") ? "sv" : "en";
+    const all = m.series.flatMap((s) => s.pts);
+    const tmin = Math.floor(Math.min(-5, ...all.map((d) => d.t)) / 5) * 5;
+    const tmax = Math.ceil(Math.max(15, ...all.map((d) => d.t)) / 5) * 5;
+    const kmax = Math.ceil(Math.max(20, ...all.map((d) => d.kwh)) / 10) * 10;
+    const L = 52, R = 740, Y0 = 20, B = 300;
+    const x = (t) => L + (t - tmin) / (tmax - tmin) * (R - L);
+    const y = (k) => B - k / kmax * (B - Y0);
+    const step = kmax > 60 ? 20 : 10;
+    const yt = Array.from({ length: Math.floor(kmax / step) + 1 }, (_, i) => i * step);
+    const xt = Array.from({ length: Math.floor((tmax - tmin) / 5) + 1 }, (_, i) => tmin + i * 5);
+    const f1 = (v) => fmt(v, 1, "", lang);
+    let out = `<svg viewBox="0 0 760 340" role="img" aria-label="${esc(c.title || "Energisignatur")}">`;
+    out += yt.map((v) => `<line x1="${L}" x2="${R}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" class="lbl">${v}</text>`).join("");
+    out += `<line x1="${L}" x2="${R}" y1="${B}" y2="${B}" class="axis"/>`;
+    out += xt.map((v) => `<text x="${x(v)}" y="${B + 16}" text-anchor="middle" class="lbl">${v}</text>`).join("");
+    out += `<text x="${R}" y="${B + 34}" text-anchor="end" class="lbl">${lang === "sv" ? "Utetemperatur, dygnsmedel (°C)" : "Outdoor temperature, daily mean (°C)"}</text>`;
+    out += `<text x="${L}" y="${Y0 - 6}" class="lbl">kWh/${lang === "sv" ? "dygn" : "day"}</text>`;
+    if (c.reference !== null && c.reference !== undefined) {
+      out += `<line x1="${x(c.reference)}" x2="${x(c.reference)}" y1="${Y0}" y2="${B}" class="ref"/>`;
+    }
+    for (const s of m.series) {
+      const op = s.accent ? 0.9 : 0.4, r = s.accent ? 3.5 : 2.5;
+      out += s.pts.map((d) => `<circle cx="${x(d.t).toFixed(1)}" cy="${y(d.kwh).toFixed(1)}" r="${r}" fill="${s.color}" fill-opacity="${op}"><title>${esc(s.name)} ${d.date}: ${f1(d.kwh)} kWh, ${f1(d.t)} °C</title></circle>`).join("");
+      if (s.f) {
+        const pts = Array.from({ length: 41 }, (_, j) => s.lo + (s.hi - s.lo) * j / 40);
+        out += `<path d="${pts.map((t, j) => `${j ? "L" : "M"}${x(t).toFixed(1)},${y(Math.max(0, s.f(t))).toFixed(1)}`).join(" ")}" fill="none" stroke="${s.color}" stroke-width="2.5"/>`;
+      }
+      if (s.atRef !== null) out += `<circle cx="${x(c.reference)}" cy="${y(s.atRef)}" r="5" fill="none" stroke="${s.color}" stroke-width="2"/>`;
+    }
+    return out + "</svg>";
+  }
+
+  _html() {
+    const c = this._config;
+    if (!c) return "";
+    const lang = (this._hass?.locale?.language || "sv").startsWith("sv") ? "sv" : "en";
+    const m = this._model();
+    const last = m.series.at(-1), first = m.series.at(0);
+    let finding = "";
+    if (m.series.length >= 2 && first.atRef !== null && last.atRef !== null && first.atRef > 0) {
+      const pct = Math.round((1 - last.atRef / first.atRef) * 100);
+      finding = lang === "sv"
+        ? `${last.name}: ${fmt(last.atRef, 1, "", lang)} kWh/dygn vid ${c.reference} °C mot ${fmt(first.atRef, 1, "", lang)} (${pct >= 0 ? pct + " % lägre" : -pct + " % högre"})`
+        : `${last.name}: ${fmt(last.atRef, 1, "", lang)} kWh/day at ${c.reference} °C vs ${fmt(first.atRef, 1, "", lang)} (${pct >= 0 ? pct + "% lower" : -pct + "% higher"})`;
+    }
+    const legend = m.series.map((s) => `<span class="leg"><i style="background:${s.color}"></i>${esc(s.name)} · ${s.pts.length} ${lang === "sv" ? "dygn" : "days"}${s.atRef !== null ? ` · ${fmt(s.atRef, 1, "", lang)} kWh vid ${c.reference} °C` : ""}</span>`).join("");
+    const body = this._error ? `<div class="msg">${esc(this._error)}</div>`
+      : this._days === null ? `<div class="msg">${lang === "sv" ? "Hämtar statistik…" : "Loading statistics…"}</div>`
+      : this._svg(m);
+    return `<ha-card><div class="wrap">
+      <div class="title">${esc(c.title || (lang === "sv" ? "Energisignatur" : "Energy signature"))}</div>
+      ${finding ? `<div class="finding">${esc(finding)}</div>` : ""}
+      <div class="legend">${legend}</div>
+      ${body}
+    </div></ha-card>`;
+  }
+
+  _render() {
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this.shadowRoot.innerHTML = `<style>${SIG_STYLE}</style>${this._html()}`;
+  }
+}
+
+const SIG_STYLE = `
+:host { display: block; }
+.wrap { padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; color: var(--primary-text-color); }
+.title { font-size: 18px; font-weight: 500; }
+.finding { font-size: 14px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--secondary-text-color); }
+.leg i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.msg { font-size: 13px; color: var(--secondary-text-color); padding: 24px 0; }
+svg { width: 100%; height: auto; display: block; font-family: inherit; }
+svg text { font-size: 11px; fill: var(--secondary-text-color); }
+svg .grid { stroke: var(--divider-color, #e0e0e0); }
+svg .axis { stroke: var(--secondary-text-color); stroke-opacity: 0.5; }
+svg .ref { stroke: var(--secondary-text-color); stroke-dasharray: 4 4; stroke-opacity: 0.6; }
+`;
+
+if (!customElements.get("calibra-signature-card")) {
+  customElements.define("calibra-signature-card", CalibraSignatureCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: "calibra-signature-card",
+    name: "Calibra Signature Card",
+    description: "Energy signature: daily kWh against outdoor temperature, compared between periods (e.g. old vs new heat pump).",
+    documentationURL: "https://github.com/JanJoh/calibra-card",
+  });
+}
+
 if (!customElements.get("calibra-card")) {
   customElements.define("calibra-card", CalibraCard);
   window.customCards = window.customCards || [];
@@ -623,5 +833,5 @@ if (!customElements.get("calibra-card")) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { CalibraCard, DEFAULT_ENTITIES, tankColor, fmt };   // for the tests
+  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, aggregateDays, fitQuad };   // for the tests
 }
