@@ -15,15 +15,25 @@ Flow arrows show the circulation direction, and idle circuits turn grey. A line 
 
 Tap the compressor for the refrigerant circuit: pressures, dew and bubble point, operating hours, allowed gears and alarms. Every value opens its entity's more-info dialog.
 
-| Heating | Hot water, limited by a load guard |
+| Heating | Hot water, limited by a load guard, immersion heater on |
 |---|---|
-| ![Heating](images/heat-light-760.png) | ![Hot water](images/hw-light-760.png) |
+| ![Heating](https://raw.githubusercontent.com/JanJoh/calibra-card/main/images/heat-light-760.png) | ![Hot water](https://raw.githubusercontent.com/JanJoh/calibra-card/main/images/hw-light-760.png) |
 
-| Heating stop | Idle, dark theme | Phone |
-|---|---|---|
-| ![Heating stop](images/stop-light-760.png) | ![Idle](images/idle-dark-760.png) | ![Phone](images/hw-dark-380.png) |
+| Heating stop | Idle, dark theme |
+|---|---|
+| ![Heating stop](https://raw.githubusercontent.com/JanJoh/calibra-card/main/images/stop-light-760.png) | ![Idle](https://raw.githubusercontent.com/JanJoh/calibra-card/main/images/idle-dark-760.png) |
 
-Below 560 px the card switches to a compact diagram with larger text. Swedish and English follow the user's language.
+**Refrigerant circuit**: tap the compressor.
+
+![Refrigerant circuit](https://raw.githubusercontent.com/JanJoh/calibra-card/main/images/heat-detail-light-760.png)
+
+**Phone:** below 560 px the card switches to a compact diagram with larger text. The immersion heater row stays visible.
+
+| Heating | Hot water, immersion heater on, dark theme |
+|---|---|
+| ![Phone, heating](https://raw.githubusercontent.com/JanJoh/calibra-card/main/images/heat-light-380.png) | ![Phone, hot water](https://raw.githubusercontent.com/JanJoh/calibra-card/main/images/hw-dark-380.png) |
+
+Swedish and English follow the user's language. The screenshots use test data from `test/preview.html`.
 
 ## Installation
 
