@@ -13,7 +13,7 @@ It draws the system as it is actually plumbed:
 - **TWC tank:** top and bottom temperature, coloured by temperature.
 - **Optional separate water heater** in series after the tank, with its own thermostat, plus the taps.
 
-Flow arrows show the circulation direction, and idle circuits turn grey. A line under the title explains **why** the pump is doing what it does. It reports a limited gear, a heating stop, a temporarily blocked compressor, the immersion heater coming on, an alarm, or your own notices (for example a sauna load guard).
+Flow arrows show the circulation direction, and idle circuits turn grey. A line under the title explains **why** the pump is doing what it does. It reports a limited gear, a heating stop, the restart delay after the compressor stops (minutes left), the immersion heater coming on, an alarm, or your own notices (for example a sauna load guard).
 
 Tap the compressor for the refrigerant circuit: pressures, dew and bubble point, operating hours, allowed gears and alarms. Every value opens its entity's more-info dialog.
 

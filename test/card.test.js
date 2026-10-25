@@ -130,6 +130,14 @@ test("an alarm overrides everything else", () => {
   assert.match(m.why, /larm/);
 });
 
+test("the restart delay after a stop shows the minutes left, not a block", () => {
+  const m = card({ [`sensor.${P}_compressor_temporarily_blocked`]: "145" })._model();
+  assert.match(m.why, /Omstartsspärr efter stopp · 3 min kvar\./);
+  assert.ok(!m.why.includes("blockerad"));
+  assert.match(card({ [`sensor.${P}_compressor_temporarily_blocked`]: "11" })._model().why, /1 min kvar/);
+  assert.ok(!card({})._model().why.includes("Omstartsspärr"));
+});
+
 test("optional parts disappear when not configured", () => {
   const c = card({}, { entities: {}, notices: [] });
   const m = c._model();

@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.4.0";
+const CARD_VERSION = "0.4.1";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -67,12 +67,12 @@ const T = {
     pumpToday: "Värmepump el idag", heaterToday: "Beredare idag", brineMin: "Lägsta brine idag", immHours: "Intern elpatron, totalt",
     back: "‹ Tillbaka", hp: "Högtryck (kondensor)", lp: "Lågtryck (förångare)", bubble: "Bubbelpunkt", dew: "Daggpunkt",
     compHours: "Kompressor, drifttid", tapHours: "Varmvatten, drifttid", gearsHeat: "Tillåtna växlar, värme",
-    gearsTap: "Tillåtna växlar, varmvatten", blocked: "Tillfälligt blockerad", yes: "Ja", no: "Nej",
+    gearsTap: "Tillåtna växlar, varmvatten", blocked: "Omstartsspärr", minLeft: (m) => `${m} min kvar`, yes: "Ja", no: "Nej",
     alarm: "Samlingslarm", noAlarm: "Inget", active: "Aktivt", phaseAlarm: "Fasdetektering", ok: "OK", fault: "Fel",
     whyDemand: (d, lim) => `${d}${lim ? "" : " · ingen begränsning"}`,
     whyIdle: (i) => `Inget behov just nu${i}`, integral: (v) => ` · gradminuter ${v}`,
     whyHeatStop: (o, s) => `Värmestopp: ute ${o} är över gränsen ${s}. Radiatorerna får ingen värme, bara varmvatten laddas vid behov.`,
-    whyBlocked: "Kompressorn är tillfälligt blockerad.", whyImmersion: "Intern elpatron har gått in.",
+    whyBlocked: (m) => `Omstartsspärr efter stopp · ${m} min kvar.`, whyImmersion: "Intern elpatron har gått in.",
     whyAlarm: "Värmepumpen har ett aktivt larm.",
     demands: { "No demand": "Inget behov", Heat: "Värme", "Hot water": "Varmvatten", "Anti legionella": "Legionella",
       Pool: "Pool", Cooling: "Kyla", "Passive cooling": "Passiv kyla", "Pool 2": "Pool 2", "Brine heating": "Brinevärmning" },
@@ -88,12 +88,12 @@ const T = {
     pumpToday: "Heat pump today", heaterToday: "Water heater today", brineMin: "Lowest brine today", immHours: "Immersion heater, total",
     back: "‹ Back", hp: "High pressure (condenser)", lp: "Low pressure (evaporator)", bubble: "Bubble point", dew: "Dew point",
     compHours: "Compressor hours", tapHours: "Hot water hours", gearsHeat: "Allowed gears, heating",
-    gearsTap: "Allowed gears, hot water", blocked: "Temporarily blocked", yes: "Yes", no: "No",
+    gearsTap: "Allowed gears, hot water", blocked: "Restart delay", minLeft: (m) => `${m} min left`, yes: "Yes", no: "No",
     alarm: "Sum alarm", noAlarm: "None", active: "Active", phaseAlarm: "Phase detection", ok: "OK", fault: "Fault",
     whyDemand: (d, lim) => `${d}${lim ? "" : " · no limit"}`,
     whyIdle: (i) => `No demand right now${i}`, integral: (v) => ` · degree minutes ${v}`,
     whyHeatStop: (o, s) => `Heating stop: outdoor ${o} is above the limit ${s}. Only hot water is made when needed.`,
-    whyBlocked: "The compressor is temporarily blocked.", whyImmersion: "The immersion heater is on.",
+    whyBlocked: (m) => `Restart delay after a stop · ${m} min left.`, whyImmersion: "The immersion heater is on.",
     whyAlarm: "The heat pump has an active alarm.",
     demands: {},
     heatStopChip: "Heating stop",
@@ -227,7 +227,8 @@ class CalibraCard extends HTMLElement {
     const maxAllowed = Math.round(n(maxKey) ?? gears);
     const limited = maxAllowed < gears;
     const immersion = e.immersion ? (str(hass, e.immersion) === "on" || (num(hass, e.immersion) || 0) > 0) : false;
-    const blocked = (n("compressor_blocked") || 0) > 0;
+    // Seconds left of the restart delay the pump starts each time the compressor stops (about 5 min).
+    const blockedS = n("compressor_blocked") || 0, blocked = blockedS > 0, blockedMin = Math.max(1, Math.ceil(blockedS / 60));
     const alarm = isOn(hass, e.alarm);
     const seasonActive = e.heating_season_active ? isOn(hass, e.heating_season_active) : true;
     const heatStop = e.heating_season_active && str(hass, e.heating_season_active) !== null && !seasonActive;
@@ -244,7 +245,7 @@ class CalibraCard extends HTMLElement {
     else if (running) why = t.whyDemand(demand, limited || notices.length);
     else why = t.whyIdle(n("integral") !== null ? t.integral(fmt(n("integral"), 0, "", lang)) : "");
     const extra = [...notices];
-    if (blocked) extra.push(t.whyBlocked);
+    if (blocked) extra.push(t.whyBlocked(blockedMin));
     if (immersion) extra.push(t.whyImmersion);
     if (extra.length) {
       why = `${why}. ${extra.join(" ")}`.replace(/\.\. /, ". ");
@@ -321,7 +322,7 @@ class CalibraCard extends HTMLElement {
         [t.tapHours, fmt(n("tap_water_hours"), 0, "h", lang), e.tap_water_hours],
         [t.gearsHeat, rng("gear_min_heat", "gear_max_heat"), e.gear_max_heat],
         [t.gearsTap, rng("gear_min_tap", "gear_max_tap"), e.gear_max_tap],
-        [t.blocked, (n("compressor_blocked") || 0) > 0 ? t.yes : t.no, e.compressor_blocked],
+        [t.blocked, (n("compressor_blocked") || 0) > 0 ? t.minLeft(Math.max(1, Math.ceil(n("compressor_blocked") / 60))) : t.no, e.compressor_blocked],
         null,
         [t.alarm, isOn(hass, e.alarm) ? t.active : t.noAlarm, e.alarm],
         ...(e.alarm_classes || []).map((id) => [hass?.states?.[id]?.attributes?.friendly_name || id, isOn(hass, id) ? t.active : t.off, id]),

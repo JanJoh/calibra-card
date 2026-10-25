@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 — 2026-10-25
+
+- The "temporarily blocked" notice is now what it is: the restart delay the pump starts each time the compressor stops (about 5 minutes). The explanation line reads "Omstartsspärr efter stopp · 3 min kvar" ("Restart delay after a stop · 3 min left"), and the refrigerant-circuit details show the minutes left instead of "Ja".
+
 ## 0.4.0 — 2026-10-24
 
 - New card in the same file: `custom:calibra-signature-card`. It plots the energy signature, daily kWh against daily mean outdoor temperature from long-term statistics, with one coloured series and fitted curve per period, so an old and a new heat pump can be compared at the same temperature.
