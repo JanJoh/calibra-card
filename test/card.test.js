@@ -46,7 +46,8 @@ function states(over = {}) {
     ...over,
   };
   const out = {};
-  for (const [k, v] of Object.entries(base)) out[k] = { state: v, attributes: k === "sensor.price" ? { unit_of_measurement: "kr/kWh" } : {} };
+  const changed = new Date(Date.now() - 50 * 60e3).toISOString();   // everything last changed 50 min ago
+  for (const [k, v] of Object.entries(base)) out[k] = { state: v, last_changed: changed, attributes: k === "sensor.price" ? { unit_of_measurement: "kr/kWh" } : {} };
   return out;
 }
 
@@ -68,9 +69,8 @@ test("heating: radiator branch live, valve points right, demand translated", () 
   assert.equal(m.hwOn, false);
   assert.equal(m.chip.text, "Värme");
   assert.match(m.compText, /^38 % · 2.940 rpm$/);
-  assert.equal(m.why, "Värme · ingen begränsning");
+  assert.match(m.why, /^Går sedan (igår )?\d\d:\d\d$/, "the chip says Värme; the line says since when");
   assert.ok(!html(c).includes("Växel"));
-  assert.match(m.why, /ingen begränsning/);
   assert.match(html(c), /rotate\(0\)/);
   assert.match(html(c), /1,42 kW/);
 });
@@ -119,7 +119,7 @@ test("idle shows degree minutes; pipes are grey", () => {
   });
   const m = c._model();
   assert.equal(m.compText, "Står still");
-  assert.equal(m.why, "Inget behov just nu", "the season integral is not shown as degree minutes");
+  assert.match(m.why, /^Står still sedan (igår )?\d\d:\d\d$/, "no degree minutes, no repeat of the chip");
   assert.match(m.integral, /^Värmesäsongsintegral [−-]150$/);
   const rows = c._detailModel().at(-1).rows.filter(Boolean).map(([label, value]) => `${label}: ${value}`);
   assert.ok(rows.includes("Värmesäsongsintegral: −150") || rows.includes("Värmesäsongsintegral: -150"), rows.join(" | "));
@@ -177,7 +177,7 @@ test("clicking a value opens more-info for its entity", () => {
 
 test("English labels", () => {
   const m = card({}, {}, "en")._model();
-  assert.equal(m.why, "Heat · no limit");
+  assert.match(m.why, /^Running since (yesterday )?\d\d:\d\d$/);
 });
 
 test("only relevant state changes re-render", () => {
@@ -230,4 +230,12 @@ test("brine and condenser pumps are drawn as symbols filled to their speed", () 
   assert.ok(!h.includes(">Brinepump<"));
   const idle = html(card({ "sensor.diplomat_inverter_duo_brine_circulation_pump_speed": "0" }));
   assert.equal(count(idle, 'class="spin"'), 1);
+});
+
+test("since: today as a time, then yesterday, then a date", () => {
+  const { sinceWhen } = require("../dist/calibra-card.js");
+  const t = { yesterday: "igår" }, now = new Date(2026, 9, 25, 17, 40);
+  assert.equal(sinceWhen(new Date(2026, 9, 25, 17, 23).toISOString(), "sv", t, now), "17:23");
+  assert.equal(sinceWhen(new Date(2026, 9, 24, 22, 5).toISOString(), "sv", t, now), "igår 22:05");
+  assert.equal(sinceWhen(new Date(2026, 9, 21, 9, 0).toISOString(), "sv", t, now), "21 okt 09:00");
 });

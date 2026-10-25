@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3 — 2026-10-25
+
+- The explanation line no longer repeats the chip ("Inget behov" / "Inget behov just nu", "Värme" / "Värme · ingen begränsning"). It now says since when the compressor has been running or stopped, from the compressor signal's last change: "Går sedan 16:33", "Står still sedan igår 22:05", "… sedan 21 okt 09:00". Limits, notices, the restart delay, heating stop and alarms follow as before.
+
 ## 0.4.2 — 2026-10-25
 
 - "Inget behov just nu" no longer adds "· gradminuter …". That value is the heating season integral (it decides heating stop against the limit, and sat at its floor for days), not the degree minutes that start the compressor; the register map has none of those.

@@ -54,7 +54,8 @@
   };
   const st = { ...base, ...(modes[q.get("mode") || "heat"]) };
   const states = {};
-  for (const [k, v] of Object.entries(st)) states[k] = { state: v, attributes: k === "sensor.price" ? { unit_of_measurement: "kr/kWh" } : {} };
+  const changed = new Date(new Date().setHours(16, 33, 0, 0)).toISOString();   // "sedan 16:33" in the shots
+  for (const [k, v] of Object.entries(st)) states[k] = { state: v, last_changed: changed, attributes: k === "sensor.price" ? { unit_of_measurement: "kr/kWh" } : {} };
   const c = document.createElement("calibra-card");
   c.setConfig({
     borehole_depth: 88,

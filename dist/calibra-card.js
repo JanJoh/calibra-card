@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.4.2";
+const CARD_VERSION = "0.4.3";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -69,8 +69,8 @@ const T = {
     compHours: "Kompressor, drifttid", tapHours: "Varmvatten, drifttid", gearsHeat: "Tillåtna växlar, värme",
     gearsTap: "Tillåtna växlar, varmvatten", blocked: "Omstartsspärr", minLeft: (m) => `${m} min kvar`, yes: "Ja", no: "Nej",
     alarm: "Samlingslarm", noAlarm: "Inget", active: "Aktivt", phaseAlarm: "Fasdetektering", ok: "OK", fault: "Fel",
-    whyDemand: (d, lim) => `${d}${lim ? "" : " · ingen begränsning"}`,
-    whyIdle: "Inget behov just nu", stopLimit: "Värmestopp, gräns", seasonIntegral: "Värmesäsongsintegral",
+    whyRunning: (since) => `Går${since}`, whyIdle: (since) => `Står still${since}`, since: (w) => ` sedan ${w}`,
+    yesterday: "igår", stopLimit: "Värmestopp, gräns", seasonIntegral: "Värmesäsongsintegral",
     whyHeatStop: (o, s) => `Värmestopp: ute ${o} är över gränsen ${s}. Radiatorerna får ingen värme, bara varmvatten laddas vid behov.`,
     whyBlocked: (m) => `Omstartsspärr efter stopp · ${m} min kvar.`, whyImmersion: "Intern elpatron har gått in.",
     whyAlarm: "Värmepumpen har ett aktivt larm.",
@@ -90,8 +90,8 @@ const T = {
     compHours: "Compressor hours", tapHours: "Hot water hours", gearsHeat: "Allowed gears, heating",
     gearsTap: "Allowed gears, hot water", blocked: "Restart delay", minLeft: (m) => `${m} min left`, yes: "Yes", no: "No",
     alarm: "Sum alarm", noAlarm: "None", active: "Active", phaseAlarm: "Phase detection", ok: "OK", fault: "Fault",
-    whyDemand: (d, lim) => `${d}${lim ? "" : " · no limit"}`,
-    whyIdle: "No demand right now", stopLimit: "Heating stop, limit", seasonIntegral: "Heating season integral",
+    whyRunning: (since) => `Running${since}`, whyIdle: (since) => `Stopped${since}`, since: (w) => ` since ${w}`,
+    yesterday: "yesterday", stopLimit: "Heating stop, limit", seasonIntegral: "Heating season integral",
     whyHeatStop: (o, s) => `Heating stop: outdoor ${o} is above the limit ${s}. Only hot water is made when needed.`,
     whyBlocked: (m) => `Restart delay after a stop · ${m} min left.`, whyImmersion: "The immersion heater is on.",
     whyAlarm: "The heat pump has an active alarm.",
@@ -123,6 +123,19 @@ function fmt(v, digits = 1, unit = "", lang = "sv") {
   if (v === null || v === undefined || !Number.isFinite(v)) return "–";
   const s = v.toLocaleString(lang === "sv" ? "sv-SE" : "en-GB", { minimumFractionDigits: digits, maximumFractionDigits: digits });
   return unit ? `${s}${unit === "°" ? "" : " "}${unit}` : s;
+}
+
+// "17:23" today, "igår 17:23" yesterday, else "21 okt 17:23" (local time).
+function sinceWhen(iso, lang, t, now = new Date()) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const loc = lang === "sv" ? "sv-SE" : "en-GB";
+  const hm = d.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" });
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 864e5);
+  if (diff <= 0) return hm;
+  if (diff === 1) return `${t.yesterday} ${hm}`;
+  return `${d.toLocaleDateString(loc, { day: "numeric", month: "short" }).replace(".", "")} ${hm}`;
 }
 
 function fmtPower(w, lang) {
@@ -242,8 +255,13 @@ class CalibraCard extends HTMLElement {
     let why, tone = "neutral";
     if (alarm) { why = t.whyAlarm; tone = "alert"; }
     else if (heatStop && !running) { why = t.whyHeatStop(fmt(outdoor, 1, "°C", lang), fmt(stopT, 0, "°C", lang)); tone = "stop"; }
-    else if (running) why = t.whyDemand(demand, limited || notices.length);
-    else why = t.whyIdle;   // the season integral is not the compressor's degree minutes, so it isn't shown here
+    // The chip already says what the pump wants; the line says how long it has run or stood still,
+    // and (below) what holds it back.
+    else {
+      const at = e.compressor_running && str(hass, e.compressor_running) !== null ? hass.states[e.compressor_running].last_changed : null;
+      const since = at ? t.since(sinceWhen(at, lang, t)) : "";
+      why = running ? t.whyRunning(since) : t.whyIdle(since);
+    }
     const extra = [...notices];
     if (blocked) extra.push(t.whyBlocked(blockedMin));
     if (immersion) extra.push(t.whyImmersion);
@@ -840,5 +858,5 @@ if (!customElements.get("calibra-card")) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, aggregateDays, fitQuad };   // for the tests
+  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, sinceWhen, aggregateDays, fitQuad };   // for the tests
 }
