@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2 — 2026-10-25
+
+- "Inget behov just nu" no longer adds "· gradminuter …". That value is the heating season integral (it decides heating stop against the limit, and sat at its floor for days), not the degree minutes that start the compressor; the register map has none of those.
+- The integral is shown where it belongs: as "Värmesäsongsintegral" in the refrigerant-circuit details next to the heating stop limit, and as the tooltip of the heating stop pill.
+
 ## 0.4.1 — 2026-10-25
 
 - The "temporarily blocked" notice is now what it is: the restart delay the pump starts each time the compressor stops (about 5 minutes). The explanation line reads "Omstartsspärr efter stopp · 3 min kvar" ("Restart delay after a stop · 3 min left"), and the refrigerant-circuit details show the minutes left instead of "Ja".

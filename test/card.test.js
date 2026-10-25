@@ -119,7 +119,11 @@ test("idle shows degree minutes; pipes are grey", () => {
   });
   const m = c._model();
   assert.equal(m.compText, "Står still");
-  assert.match(m.why, /gradminuter −150|gradminuter -150/);
+  assert.equal(m.why, "Inget behov just nu", "the season integral is not shown as degree minutes");
+  assert.match(m.integral, /^Värmesäsongsintegral [−-]150$/);
+  const rows = c._detailModel().at(-1).rows.filter(Boolean).map(([label, value]) => `${label}: ${value}`);
+  assert.ok(rows.includes("Värmesäsongsintegral: −150") || rows.includes("Värmesäsongsintegral: -150"), rows.join(" | "));
+  assert.ok(rows.some((r) => r.startsWith("Värmestopp, gräns: ")));
   assert.equal(m.brineOn, false);
   assert.ok(!html(c).includes('stroke="#2f6fb3"'));
 });

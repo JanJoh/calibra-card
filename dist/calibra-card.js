@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.4.1";
+const CARD_VERSION = "0.4.2";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -70,7 +70,7 @@ const T = {
     gearsTap: "Tillåtna växlar, varmvatten", blocked: "Omstartsspärr", minLeft: (m) => `${m} min kvar`, yes: "Ja", no: "Nej",
     alarm: "Samlingslarm", noAlarm: "Inget", active: "Aktivt", phaseAlarm: "Fasdetektering", ok: "OK", fault: "Fel",
     whyDemand: (d, lim) => `${d}${lim ? "" : " · ingen begränsning"}`,
-    whyIdle: (i) => `Inget behov just nu${i}`, integral: (v) => ` · gradminuter ${v}`,
+    whyIdle: "Inget behov just nu", stopLimit: "Värmestopp, gräns", seasonIntegral: "Värmesäsongsintegral",
     whyHeatStop: (o, s) => `Värmestopp: ute ${o} är över gränsen ${s}. Radiatorerna får ingen värme, bara varmvatten laddas vid behov.`,
     whyBlocked: (m) => `Omstartsspärr efter stopp · ${m} min kvar.`, whyImmersion: "Intern elpatron har gått in.",
     whyAlarm: "Värmepumpen har ett aktivt larm.",
@@ -91,7 +91,7 @@ const T = {
     gearsTap: "Allowed gears, hot water", blocked: "Restart delay", minLeft: (m) => `${m} min left`, yes: "Yes", no: "No",
     alarm: "Sum alarm", noAlarm: "None", active: "Active", phaseAlarm: "Phase detection", ok: "OK", fault: "Fault",
     whyDemand: (d, lim) => `${d}${lim ? "" : " · no limit"}`,
-    whyIdle: (i) => `No demand right now${i}`, integral: (v) => ` · degree minutes ${v}`,
+    whyIdle: "No demand right now", stopLimit: "Heating stop, limit", seasonIntegral: "Heating season integral",
     whyHeatStop: (o, s) => `Heating stop: outdoor ${o} is above the limit ${s}. Only hot water is made when needed.`,
     whyBlocked: (m) => `Restart delay after a stop · ${m} min left.`, whyImmersion: "The immersion heater is on.",
     whyAlarm: "The heat pump has an active alarm.",
@@ -243,7 +243,7 @@ class CalibraCard extends HTMLElement {
     if (alarm) { why = t.whyAlarm; tone = "alert"; }
     else if (heatStop && !running) { why = t.whyHeatStop(fmt(outdoor, 1, "°C", lang), fmt(stopT, 0, "°C", lang)); tone = "stop"; }
     else if (running) why = t.whyDemand(demand, limited || notices.length);
-    else why = t.whyIdle(n("integral") !== null ? t.integral(fmt(n("integral"), 0, "", lang)) : "");
+    else why = t.whyIdle;   // the season integral is not the compressor's degree minutes, so it isn't shown here
     const extra = [...notices];
     if (blocked) extra.push(t.whyBlocked(blockedMin));
     if (immersion) extra.push(t.whyImmersion);
@@ -286,6 +286,7 @@ class CalibraCard extends HTMLElement {
       heatDt: n("condenser_out") !== null && n("condenser_in") !== null ? fmt(n("condenser_out") - n("condenser_in"), 1, "", lang) : "–",
       heatStop, seasonKnown: !!e.heating_season_active && str(hass, e.heating_season_active) !== null,
       stopLimit: stopT !== null ? t.limit(fmt(stopT, 0, "°C", lang)) : "",
+      integral: n("integral") !== null ? `${t.seasonIntegral} ${fmt(n("integral"), 0, "", lang)}` : "",
       tankTop: fmt(tankTop, 1, "°", lang), tankBot: fmt(tankBot, 1, "°", lang),
       tankTopC: tankColor(tankTop), tankBotC: tankColor(tankBot),
       heater: e.heater_power ? { on: (heaterW || 0) > 20, short: fmtPower(heaterW, lang), text: `${fmtPower(heaterW, lang)} · ${(heaterW || 0) > 20 ? t.heaterOn : t.heaterIdle}` } : null,
@@ -323,6 +324,11 @@ class CalibraCard extends HTMLElement {
         [t.gearsHeat, rng("gear_min_heat", "gear_max_heat"), e.gear_max_heat],
         [t.gearsTap, rng("gear_min_tap", "gear_max_tap"), e.gear_max_tap],
         [t.blocked, (n("compressor_blocked") || 0) > 0 ? t.minLeft(Math.max(1, Math.ceil(n("compressor_blocked") / 60))) : t.no, e.compressor_blocked],
+        null,
+        // The heating season integral decides heating stop against the limit; it is not the
+        // degree minutes that start the compressor (those aren't in the register map).
+        [t.stopLimit, fmt(n("heating_season_stop"), 0, "°C", lang), e.heating_season_stop],
+        [t.seasonIntegral, fmt(n("integral"), 0, "", lang), e.integral],
         null,
         [t.alarm, isOn(hass, e.alarm) ? t.active : t.noAlarm, e.alarm],
         ...(e.alarm_classes || []).map((id) => [hass?.states?.[id]?.attributes?.friendly_name || id, isOn(hass, id) ? t.active : t.off, id]),
@@ -421,7 +427,7 @@ class CalibraCard extends HTMLElement {
     ${txt(572, 114, t.ret, "sm")}${txt(700, 114, m.ret, "val", e.condenser_in, "end")}
     ${txt(572, 132, `ΔT ${m.heatDt}`, "lbl opt")}
   </g>
-  ${m.seasonKnown ? `<g class="season" data-entity="${esc(e.heating_season_stop)}"><rect x="568" y="140" width="136" height="20" rx="10" class="pill ${m.heatStop ? "stop" : ""}"/>${txt(636, 154, (m.heatStop ? t.heatStopOn : t.heatStopOff)(m.stopLimit), `xs ${m.heatStop ? "stoptxt strong" : ""}`, "", "middle")}</g>` : ""}
+  ${m.seasonKnown ? `<g class="season" data-entity="${esc(e.heating_season_stop)}">${m.integral ? `<title>${esc(m.integral)}</title>` : ""}<rect x="568" y="140" width="136" height="20" rx="10" class="pill ${m.heatStop ? "stop" : ""}"/>${txt(636, 154, (m.heatStop ? t.heatStopOn : t.heatStopOff)(m.stopLimit), `xs ${m.heatStop ? "stoptxt strong" : ""}`, "", "middle")}</g>` : ""}
 
   <rect x="470" y="180" width="72" height="140" rx="28" fill="url(#${tankId})" stroke="var(--divider-color, #c9cdd2)"/>
   ${txt(506, 206, m.tankTop, `val ${m.tankTopC.dark ? "light" : ""}`, e.tank_top, "middle")}

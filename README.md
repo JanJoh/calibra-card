@@ -15,7 +15,7 @@ It draws the system as it is actually plumbed:
 
 Flow arrows show the circulation direction, and idle circuits turn grey. A line under the title explains **why** the pump is doing what it does. It reports a limited gear, a heating stop, the restart delay after the compressor stops (minutes left), the immersion heater coming on, an alarm, or your own notices (for example a sauna load guard).
 
-Tap the compressor for the refrigerant circuit: pressures, dew and bubble point, operating hours, allowed gears and alarms. Every value opens its entity's more-info dialog.
+Tap the compressor for the refrigerant circuit: pressures, dew and bubble point, operating hours, allowed gears, the restart delay, the heating stop limit and the heating season integral, and alarms. Every value opens its entity's more-info dialog.
 
 | Heating | Hot water, limited by a load guard, immersion heater on |
 |---|---|
