@@ -94,7 +94,7 @@ title: Gammal mot ny värmepump
 energy: sensor.heat_pump_energy        # kWh, total_increasing
 temperature: sensor.netatmo_outdoor_temperature            # °C, measurement
 start: "2025-10-01"
-reference: 5                                               # °C, where the finding is read
+reference: 5                                               # °C, or an entity to follow, e.g. sensor.outdoor_temperature
 periods:
   - name: Gammal pump
     end: "2026-06-15"
@@ -103,6 +103,11 @@ periods:
 ```
 
 The last period is drawn as the highlighted one. A curve's value at the reference temperature is shown only when that period has data on both sides of it.
+
+The reference is where the dashed line sits and the finding is read:
+- A number is a fixed temperature (default 5 °C).
+- An entity id (`reference: sensor.outdoor_temperature`) follows that sensor, rounded to half a degree, so the card compares the periods at today's weather. `reference_fallback` (default 5) is used while the sensor has no value.
+- Drag in the chart, tap it, or focus it and use the left and right arrow keys to read the curves at another temperature. "Tillbaka till …" returns to the configured reference; reloading the page does too.
 
 ## Development
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0 — 2026-10-29
+
+- **Energy signature: the reference can follow a sensor.** `reference` takes an entity id as well as a number, for example the outdoor temperature. The dashed line then sits at today's temperature (rounded to half a degree), is marked "ute nu", and the finding compares the periods at today's weather. When the sensor has no value, `reference_fallback` (default 5 °C) is used.
+- **Drag the reference line.** Press or drag anywhere in the chart, or use the left and right arrow keys, to read the curves at another temperature. A button, "Tillbaka till …", puts it back to the configured reference. The temperature is shown above the line.
+
 ## 0.4.3 — 2026-10-25
 
 - The explanation line no longer repeats the chip ("Inget behov" / "Inget behov just nu", "Värme" / "Värme · ingen begränsning"). It now says since when the compressor has been running or stopped, from the compressor signal's last change: "Går sedan 16:33", "Står still sedan igår 22:05", "… sedan 21 okt 09:00". Limits, notices, the restart delay, heating stop and alarms follow as before.

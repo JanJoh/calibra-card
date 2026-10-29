@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.4.3";
+const CARD_VERSION = "0.5.0";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -706,14 +706,38 @@ class CalibraSignatureCard extends HTMLElement {
     this._config = { reference: 5, title: null, ...config };
     this._days = null;
     this._fetchedAt = 0;
+    this._dragRef = null;
     this._render();
   }
 
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
-    if (first) this._render();
+    // A reference that follows a sensor moves the line when the sensor's (rounded) value changes
+    if (first || this._ref() !== this._shownRef) this._render();
     if (Date.now() - this._fetchedAt > 60 * 60 * 1000) this._fetch();
+  }
+
+  // The reference from the config: a fixed temperature, or an entity id whose state it follows
+  // (rounded to half a degree, so the card is not redrawn on every small change).
+  _followsEntity() {
+    const r = this._config?.reference;
+    return typeof r === "string" && r.includes(".");
+  }
+
+  _baseRef() {
+    const r = this._config?.reference;
+    if (r === null || r === undefined || r === "") return null;
+    if (this._followsEntity()) {
+      const v = parseFloat(this._hass?.states?.[r]?.state);
+      return Number.isFinite(v) ? Math.round(v * 2) / 2 : (this._config.reference_fallback ?? 5);
+    }
+    return Number(r);
+  }
+
+  // What the card reads the curves at: where the viewer dragged the line, else the config's reference
+  _ref() {
+    return this._dragRef !== null && this._dragRef !== undefined ? this._dragRef : this._baseRef();
   }
 
   getCardSize() { return 6; }
@@ -741,17 +765,17 @@ class CalibraSignatureCard extends HTMLElement {
   }
 
   _model() {
-    const c = this._config, days = this._days || [];
+    const c = this._config, days = this._days || [], ref = this._ref();
     const series = c.periods.map((p, i) => {
       const pts = days.filter((d) => inPeriod(d.date, p));
       const f = pts.length >= 5 ? fitQuad(pts) : null;
       const lo = pts.length ? Math.min(...pts.map((d) => d.t)) : null;
       const hi = pts.length ? Math.max(...pts.map((d) => d.t)) : null;
-      const covers = f && lo <= c.reference && hi >= c.reference;
+      const covers = f && ref !== null && lo <= ref && hi >= ref;
       return { name: p.name || `Period ${i + 1}`, color: p.color || SIG_COLORS[i % SIG_COLORS.length], pts, f, lo, hi,
-        atRef: covers ? f(c.reference) : null, accent: i === c.periods.length - 1 };
+        atRef: covers ? f(ref) : null, accent: i === c.periods.length - 1 };
     });
-    return { series };
+    return { series, ref };
   }
 
   _svg(m) {
@@ -767,14 +791,24 @@ class CalibraSignatureCard extends HTMLElement {
     const yt = Array.from({ length: Math.floor(kmax / step) + 1 }, (_, i) => i * step);
     const xt = Array.from({ length: Math.floor((tmax - tmin) / 5) + 1 }, (_, i) => tmin + i * 5);
     const f1 = (v) => fmt(v, 1, "", lang);
-    let out = `<svg viewBox="0 0 760 340" role="img" aria-label="${esc(c.title || "Energisignatur")}">`;
+    this._scale = { tmin, tmax, L, R };
+    const ref = m.ref;
+    const help = lang === "sv"
+      ? `Referenstemperatur ${refLabel(ref, lang)} °C. Dra i grafen eller använd vänster- och högerpil för att flytta den.`
+      : `Reference temperature ${refLabel(ref, lang)} °C. Drag in the chart or use the left and right arrow keys to move it.`;
+    // The focus ring (class "kbd") is for the keyboard, not after a drag with the mouse or a finger
+    let out = `<svg class="plot${this._byPointer ? "" : " kbd"}" viewBox="0 0 760 340" role="img" tabindex="0" aria-label="${esc((c.title || "Energisignatur") + ". " + help)}">`;
     out += yt.map((v) => `<line x1="${L}" x2="${R}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" class="lbl">${v}</text>`).join("");
     out += `<line x1="${L}" x2="${R}" y1="${B}" y2="${B}" class="axis"/>`;
     out += xt.map((v) => `<text x="${x(v)}" y="${B + 16}" text-anchor="middle" class="lbl">${v}</text>`).join("");
     out += `<text x="${R}" y="${B + 34}" text-anchor="end" class="lbl">${lang === "sv" ? "Utetemperatur, dygnsmedel (°C)" : "Outdoor temperature, daily mean (°C)"}</text>`;
     out += `<text x="${L}" y="${Y0 - 6}" class="lbl">kWh/${lang === "sv" ? "dygn" : "day"}</text>`;
-    if (c.reference !== null && c.reference !== undefined) {
-      out += `<line x1="${x(c.reference)}" x2="${x(c.reference)}" y1="${Y0}" y2="${B}" class="ref"/>`;
+    if (ref !== null && ref >= tmin && ref <= tmax) {
+      const live = this._dragRef === null && this._followsEntity();
+      const tag = `${refLabel(ref, lang)} °C${live ? (lang === "sv" ? " · ute nu" : " · outside now") : ""}`;
+      const anchor = x(ref) > R - 80 ? "end" : x(ref) < L + 80 ? "start" : "middle";
+      out += `<line x1="${x(ref)}" x2="${x(ref)}" y1="${Y0}" y2="${B}" class="ref"/>`;
+      out += `<text x="${x(ref)}" y="${Y0 - 6}" text-anchor="${anchor}" class="reftag">${esc(tag)}</text>`;
     }
     for (const s of m.series) {
       const op = s.accent ? 0.9 : 0.4, r = s.accent ? 3.5 : 2.5;
@@ -783,7 +817,7 @@ class CalibraSignatureCard extends HTMLElement {
         const pts = Array.from({ length: 41 }, (_, j) => s.lo + (s.hi - s.lo) * j / 40);
         out += `<path d="${pts.map((t, j) => `${j ? "L" : "M"}${x(t).toFixed(1)},${y(Math.max(0, s.f(t))).toFixed(1)}`).join(" ")}" fill="none" stroke="${s.color}" stroke-width="2.5"/>`;
       }
-      if (s.atRef !== null) out += `<circle cx="${x(c.reference)}" cy="${y(s.atRef)}" r="5" fill="none" stroke="${s.color}" stroke-width="2"/>`;
+      if (s.atRef !== null) out += `<circle cx="${x(ref)}" cy="${y(s.atRef)}" r="5" fill="none" stroke="${s.color}" stroke-width="2"/>`;
     }
     return out + "</svg>";
   }
@@ -794,19 +828,29 @@ class CalibraSignatureCard extends HTMLElement {
     const lang = (this._hass?.locale?.language || "sv").startsWith("sv") ? "sv" : "en";
     const m = this._model();
     const last = m.series.at(-1), first = m.series.at(0);
+    const rl = refLabel(m.ref, lang);
     let finding = "";
     if (m.series.length >= 2 && first.atRef !== null && last.atRef !== null && first.atRef > 0) {
       const pct = Math.round((1 - last.atRef / first.atRef) * 100);
       finding = lang === "sv"
-        ? `${last.name}: ${fmt(last.atRef, 1, "", lang)} kWh/dygn vid ${c.reference} °C mot ${fmt(first.atRef, 1, "", lang)} (${pct >= 0 ? pct + " % lägre" : -pct + " % högre"})`
-        : `${last.name}: ${fmt(last.atRef, 1, "", lang)} kWh/day at ${c.reference} °C vs ${fmt(first.atRef, 1, "", lang)} (${pct >= 0 ? pct + "% lower" : -pct + "% higher"})`;
+        ? `${last.name}: ${fmt(last.atRef, 1, "", lang)} kWh/dygn vid ${rl} °C mot ${fmt(first.atRef, 1, "", lang)} (${pct >= 0 ? pct + " % lägre" : -pct + " % högre"})`
+        : `${last.name}: ${fmt(last.atRef, 1, "", lang)} kWh/day at ${rl} °C vs ${fmt(first.atRef, 1, "", lang)} (${pct >= 0 ? pct + "% lower" : -pct + "% higher"})`;
     }
-    const legend = m.series.map((s) => `<span class="leg"><i style="background:${s.color}"></i>${esc(s.name)} · ${s.pts.length} ${lang === "sv" ? "dygn" : "days"}${s.atRef !== null ? ` · ${fmt(s.atRef, 1, "", lang)} kWh vid ${c.reference} °C` : ""}</span>`).join("");
+    const legend = m.series.map((s) => `<span class="leg"><i style="background:${s.color}"></i>${esc(s.name)} · ${s.pts.length} ${lang === "sv" ? "dygn" : "days"}${s.atRef !== null ? ` · ${fmt(s.atRef, 1, "", lang)} kWh ${lang === "sv" ? "vid" : "at"} ${rl} °C` : ""}</span>`).join("");
     const body = this._error ? `<div class="msg">${esc(this._error)}</div>`
       : this._days === null ? `<div class="msg">${lang === "sv" ? "Hämtar statistik…" : "Loading statistics…"}</div>`
       : this._svg(m);
+    // After a drag: a button back to the configured reference (or the sensor it follows)
+    let reset = "";
+    if (this._dragRef !== null) {
+      const base = this._baseRef();
+      const what = this._followsEntity()
+        ? (lang === "sv" ? `ute nu (${refLabel(base, lang)} °C)` : `outside now (${refLabel(base, lang)} °C)`)
+        : `${refLabel(base, lang)} °C`;
+      reset = `<button type="button" class="reset">${lang === "sv" ? "Tillbaka till" : "Back to"} ${esc(what)}</button>`;
+    }
     return `<ha-card><div class="wrap">
-      <div class="title">${esc(c.title || (lang === "sv" ? "Energisignatur" : "Energy signature"))}</div>
+      <div class="head"><div class="title">${esc(c.title || (lang === "sv" ? "Energisignatur" : "Energy signature"))}</div>${reset}</div>
       ${finding ? `<div class="finding">${esc(finding)}</div>` : ""}
       <div class="legend">${legend}</div>
       ${body}
@@ -814,15 +858,90 @@ class CalibraSignatureCard extends HTMLElement {
   }
 
   _render() {
-    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    if (!this.shadowRoot) {
+      this.attachShadow({ mode: "open" });
+      this._listen();
+    }
+    this._shownRef = this._ref();
+    // Every redraw replaces the chart, so keep the keyboard focus on it when it had it
+    const hadFocus = this.shadowRoot.activeElement?.classList?.contains?.("plot");
     this.shadowRoot.innerHTML = `<style>${SIG_STYLE}</style>${this._html()}`;
+    if (this._refocus || hadFocus) {
+      this._refocus = false;
+      this.shadowRoot.querySelector?.("svg.plot")?.focus({ preventScroll: true });
+    }
   }
+
+  // Temperature under a pointer, from the chart's on-screen box (half-degree steps, inside the axis)
+  _tAt(clientX) {
+    const svg = this.shadowRoot?.querySelector?.("svg.plot"), s = this._scale;
+    if (!svg || !s) return null;
+    const box = svg.getBoundingClientRect();
+    if (!box.width) return null;
+    const vx = (clientX - box.left) / box.width * 760;
+    const t = s.tmin + (vx - s.L) / (s.R - s.L) * (s.tmax - s.tmin);
+    return Math.round(Math.min(s.tmax, Math.max(s.tmin, t)) * 2) / 2;
+  }
+
+  _setDragRef(t) {
+    if (t === null || t === undefined || t === this._dragRef) return;
+    this._dragRef = t;
+    this._render();
+  }
+
+  // Drag (or tap) in the chart to read the curves at another temperature; the arrow keys move it a
+  // degree; the button puts it back. The listeners sit on the shadow root, which outlives each redraw.
+  _listen() {
+    const root = this.shadowRoot;
+    if (!root.addEventListener) return;
+    const on = (ev, cls) => ev.composedPath().some((n) => n.classList?.contains?.(cls));
+    const move = (ev) => this._setDragRef(this._tAt(ev.clientX));
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    root.addEventListener("pointerdown", (ev) => {
+      if (!on(ev, "plot") || ev.button > 0) return;
+      // The redraw replaces the chart under the pointer, so the browser's own focus-on-press
+      // would land on a removed element: skip it and focus the new chart instead
+      ev.preventDefault();
+      this._refocus = true;
+      this._byPointer = true;
+      this._setDragRef(this._tAt(ev.clientX));
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+    });
+    root.addEventListener("click", (ev) => {
+      if (!on(ev, "reset")) return;
+      this._dragRef = null;
+      this._render();
+    });
+    root.addEventListener("keydown", (ev) => {
+      const step = { ArrowLeft: -1, ArrowRight: 1 }[ev.key];
+      if (!step || !on(ev, "plot") || !this._scale) return;
+      ev.preventDefault();
+      const s = this._scale, cur = this._ref() ?? (s.tmin + s.tmax) / 2;
+      this._refocus = true;
+      this._byPointer = false;
+      this._setDragRef(Math.min(s.tmax, Math.max(s.tmin, Math.round(cur) + step)));
+    });
+  }
+}
+
+// "5" for whole degrees, "6,5" otherwise
+function refLabel(t, lang) {
+  if (t === null || t === undefined || !Number.isFinite(t)) return "–";
+  return fmt(t, Number.isInteger(t) ? 0 : 1, "", lang);
 }
 
 const SIG_STYLE = `
 :host { display: block; }
 .wrap { padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; color: var(--primary-text-color); }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .title { font-size: 18px; font-weight: 500; }
+.reset { font: inherit; font-size: 13px; color: var(--primary-color); background: none; border: 1px solid var(--divider-color, #e0e0e0); border-radius: 16px; padding: 6px 12px; min-height: 36px; cursor: pointer; }
 .finding { font-size: 14px; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--secondary-text-color); }
 .leg i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
@@ -832,6 +951,9 @@ svg text { font-size: 11px; fill: var(--secondary-text-color); }
 svg .grid { stroke: var(--divider-color, #e0e0e0); }
 svg .axis { stroke: var(--secondary-text-color); stroke-opacity: 0.5; }
 svg .ref { stroke: var(--secondary-text-color); stroke-dasharray: 4 4; stroke-opacity: 0.6; }
+svg .reftag { font-size: 11px; font-weight: 600; fill: var(--primary-text-color); }
+svg.plot { cursor: ew-resize; touch-action: pan-y; outline: none; border-radius: 4px; }
+svg.plot.kbd:focus-visible { box-shadow: 0 0 0 2px var(--primary-color); }
 `;
 
 if (!customElements.get("calibra-signature-card")) {
@@ -858,5 +980,5 @@ if (!customElements.get("calibra-card")) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, sinceWhen, aggregateDays, fitQuad };   // for the tests
+  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, sinceWhen, aggregateDays, fitQuad, refLabel };   // for the tests
 }
