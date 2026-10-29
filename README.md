@@ -107,6 +107,7 @@ The last period is drawn as the highlighted one. A curve's value at the referenc
 The reference is where the dashed line sits and the finding is read:
 - A number is a fixed temperature (default 5 °C).
 - An entity id (`reference: sensor.outdoor_temperature`) follows that sensor, rounded to half a degree, so the card compares the periods at today's weather. `reference_fallback` (default 5) is used while the sensor has no value.
+- The difference between the newest and the first period at that temperature is shown above the line, next to it.
 - Drag in the chart, tap it, or focus it and use the left and right arrow keys to read the curves at another temperature. "Tillbaka till …" returns to the configured reference; reloading the page does too.
 
 ## Development

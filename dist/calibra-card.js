@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.5.0";
+const CARD_VERSION = "0.5.1";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -775,7 +775,11 @@ class CalibraSignatureCard extends HTMLElement {
       return { name: p.name || `Period ${i + 1}`, color: p.color || SIG_COLORS[i % SIG_COLORS.length], pts, f, lo, hi,
         atRef: covers ? f(ref) : null, accent: i === c.periods.length - 1 };
     });
-    return { series, ref };
+    // Last period against the first at the reference: positive = lower use
+    const first = series[0], last = series.at(-1);
+    const pct = series.length >= 2 && first.atRef !== null && last.atRef !== null && first.atRef > 0
+      ? Math.round((1 - last.atRef / first.atRef) * 100) : null;
+    return { series, ref, pct };
   }
 
   _svg(m) {
@@ -806,9 +810,12 @@ class CalibraSignatureCard extends HTMLElement {
     if (ref !== null && ref >= tmin && ref <= tmax) {
       const live = this._dragRef === null && this._followsEntity();
       const tag = `${refLabel(ref, lang)} °C${live ? (lang === "sv" ? " · ute nu" : " · outside now") : ""}`;
-      const anchor = x(ref) > R - 80 ? "end" : x(ref) < L + 80 ? "start" : "middle";
+      // the difference at this temperature, in the newest period's colour
+      const diff = m.pct === null ? "" : pctLabel(m.pct, lang);
+      const anchor = x(ref) > R - 120 ? "end" : x(ref) < L + 120 ? "start" : "middle";
       out += `<line x1="${x(ref)}" x2="${x(ref)}" y1="${Y0}" y2="${B}" class="ref"/>`;
-      out += `<text x="${x(ref)}" y="${Y0 - 6}" text-anchor="${anchor}" class="reftag">${esc(tag)}</text>`;
+      out += `<text x="${x(ref)}" y="${Y0 - 6}" text-anchor="${anchor}" class="reftag">${esc(tag)}${diff
+        ? `<tspan class="sep"> · </tspan><tspan class="refpct" fill="${m.series.at(-1).color}">${esc(diff)}</tspan>` : ""}</text>`;
     }
     for (const s of m.series) {
       const op = s.accent ? 0.9 : 0.4, r = s.accent ? 3.5 : 2.5;
@@ -829,14 +836,22 @@ class CalibraSignatureCard extends HTMLElement {
     const m = this._model();
     const last = m.series.at(-1), first = m.series.at(0);
     const rl = refLabel(m.ref, lang);
-    let finding = "";
-    if (m.series.length >= 2 && first.atRef !== null && last.atRef !== null && first.atRef > 0) {
-      const pct = Math.round((1 - last.atRef / first.atRef) * 100);
+    // The finding row is always there, so the card keeps its height when the line is moved to a
+    // temperature where a period has no data: it then says which periods are missing
+    let finding = "", missing = false;
+    if (m.pct !== null) {
       finding = lang === "sv"
-        ? `${last.name}: ${fmt(last.atRef, 1, "", lang)} kWh/dygn vid ${rl} °C mot ${fmt(first.atRef, 1, "", lang)} (${pct >= 0 ? pct + " % lägre" : -pct + " % högre"})`
-        : `${last.name}: ${fmt(last.atRef, 1, "", lang)} kWh/day at ${rl} °C vs ${fmt(first.atRef, 1, "", lang)} (${pct >= 0 ? pct + "% lower" : -pct + "% higher"})`;
+        ? `${last.name}: ${fmt(last.atRef, 1, "", lang)} kWh/dygn vid ${rl} °C mot ${fmt(first.atRef, 1, "", lang)} (${pctLabel(m.pct, lang)})`
+        : `${last.name}: ${fmt(last.atRef, 1, "", lang)} kWh/day at ${rl} °C vs ${fmt(first.atRef, 1, "", lang)} (${pctLabel(m.pct, lang)})`;
+    } else if (this._days !== null && m.ref !== null && m.series.length >= 2) {
+      const names = m.series.filter((s) => s.atRef === null).map((s) => s.name);
+      const list = names.join(lang === "sv" ? " och " : " and ");
+      finding = lang === "sv"
+        ? `Ingen jämförelse vid ${rl} °C: ${list} saknar mätdagar där`
+        : `No comparison at ${rl} °C: no days measured there for ${list}`;
+      missing = true;
     }
-    const legend = m.series.map((s) => `<span class="leg"><i style="background:${s.color}"></i>${esc(s.name)} · ${s.pts.length} ${lang === "sv" ? "dygn" : "days"}${s.atRef !== null ? ` · ${fmt(s.atRef, 1, "", lang)} kWh ${lang === "sv" ? "vid" : "at"} ${rl} °C` : ""}</span>`).join("");
+    const legend = m.series.map((s) => `<span class="leg"><i style="background:${s.color}"></i>${esc(s.name)} · ${s.pts.length} ${lang === "sv" ? "dygn" : "days"} · ${s.atRef !== null ? `${fmt(s.atRef, 1, "", lang)} kWh` : "–"} ${lang === "sv" ? "vid" : "at"} ${rl} °C</span>`).join("");
     const body = this._error ? `<div class="msg">${esc(this._error)}</div>`
       : this._days === null ? `<div class="msg">${lang === "sv" ? "Hämtar statistik…" : "Loading statistics…"}</div>`
       : this._svg(m);
@@ -851,7 +866,7 @@ class CalibraSignatureCard extends HTMLElement {
     }
     return `<ha-card><div class="wrap">
       <div class="head"><div class="title">${esc(c.title || (lang === "sv" ? "Energisignatur" : "Energy signature"))}</div>${reset}</div>
-      ${finding ? `<div class="finding">${esc(finding)}</div>` : ""}
+      <div class="finding${missing ? " none" : ""}">${finding ? esc(finding) : "&nbsp;"}</div>
       <div class="legend">${legend}</div>
       ${body}
     </div></ha-card>`;
@@ -930,6 +945,12 @@ class CalibraSignatureCard extends HTMLElement {
   }
 }
 
+// "40 % lägre" / "12 % högre" (positive = the newest period uses less)
+function pctLabel(pct, lang) {
+  if (lang === "sv") return pct >= 0 ? `${pct} % lägre` : `${-pct} % högre`;
+  return pct >= 0 ? `${pct}% lower` : `${-pct}% higher`;
+}
+
 // "5" for whole degrees, "6,5" otherwise
 function refLabel(t, lang) {
   if (t === null || t === undefined || !Number.isFinite(t)) return "–";
@@ -939,10 +960,11 @@ function refLabel(t, lang) {
 const SIG_STYLE = `
 :host { display: block; }
 .wrap { padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; color: var(--primary-text-color); }
-.head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; min-height: 36px; }
 .title { font-size: 18px; font-weight: 500; }
 .reset { font: inherit; font-size: 13px; color: var(--primary-color); background: none; border: 1px solid var(--divider-color, #e0e0e0); border-radius: 16px; padding: 6px 12px; min-height: 36px; cursor: pointer; }
-.finding { font-size: 14px; }
+.finding { font-size: 14px; min-height: 1.45em; }
+.finding.none { color: var(--secondary-text-color); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--secondary-text-color); }
 .leg i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
 .msg { font-size: 13px; color: var(--secondary-text-color); padding: 24px 0; }
@@ -952,6 +974,7 @@ svg .grid { stroke: var(--divider-color, #e0e0e0); }
 svg .axis { stroke: var(--secondary-text-color); stroke-opacity: 0.5; }
 svg .ref { stroke: var(--secondary-text-color); stroke-dasharray: 4 4; stroke-opacity: 0.6; }
 svg .reftag { font-size: 11px; font-weight: 600; fill: var(--primary-text-color); }
+svg .reftag .sep { fill: var(--secondary-text-color); font-weight: 400; }
 svg.plot { cursor: ew-resize; touch-action: pan-y; outline: none; border-radius: 4px; }
 svg.plot.kbd:focus-visible { box-shadow: 0 0 0 2px var(--primary-color); }
 `;
@@ -980,5 +1003,5 @@ if (!customElements.get("calibra-card")) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, sinceWhen, aggregateDays, fitQuad, refLabel };   // for the tests
+  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, sinceWhen, aggregateDays, fitQuad, refLabel, pctLabel };   // for the tests
 }

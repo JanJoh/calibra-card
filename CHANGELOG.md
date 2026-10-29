@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1 — 2026-10-29
+
+- **Energy signature:** the difference between the newest and the first period is shown at the reference line, after the temperature and in the newest period's colour ("6 °C · ute nu · 40 % lägre").
+- The card keeps its height when the line is moved to a temperature where a period has no days: the finding row then says which periods are missing ("Ingen jämförelse vid −7 °C: Ny pump saknar mätdagar där"), the legend shows "– vid −7 °C", and the title row has room for the "Tillbaka till …" button from the start.
+
 ## 0.5.0 — 2026-10-29
 
 - **Energy signature: the reference can follow a sensor.** `reference` takes an entity id as well as a number, for example the outdoor temperature. The dashed line then sits at today's temperature (rounded to half a degree), is marked "ute nu", and the finding compares the periods at today's weather. When the sensor has no value, `reference_fallback` (default 5 °C) is used.

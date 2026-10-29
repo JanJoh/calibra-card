@@ -114,3 +114,29 @@ test("refLabel writes whole degrees without decimals", () => {
   assert.equal(refLabel(-2.5, "sv"), "−2,5");
   assert.equal(refLabel(null, "sv"), "–");
 });
+
+test("the difference is shown at the reference line, and the finding row never disappears", () => {
+  const c = sigCard({ reference: 8 });
+  let h = c.shadowRoot.innerHTML;
+  // 30 − 2·8 = 14 against 18 − 8 = 10: 29 % lower, in the new pump's colour next to the temperature
+  assert.match(h, /class="reftag">8 °C<tspan class="sep"> · <\/tspan><tspan class="refpct" fill="[^"]+">29 % lägre<\/tspan>/);
+  assert.match(h, /<div class="finding">Ny pump: 10,0 kWh\/dygn vid 8 °C mot 14,0 \(29 % lägre\)<\/div>/);
+  // moved to where the new pump has no days: no percentage, the row explains instead of vanishing
+  c._setDragRef(-3);
+  h = c.shadowRoot.innerHTML;
+  assert.doesNotMatch(h, /refpct/);
+  assert.match(h, /<div class="finding none">Ingen jämförelse vid −3 °C: Ny pump saknar mätdagar där<\/div>/);
+  assert.match(h, /Ny pump · 20 dygn · – vid −3 °C/);
+  // before the statistics arrive the row is there too, empty
+  const d = sigCard({ reference: 8 });
+  d._days = null;
+  d._render();
+  assert.match(d.shadowRoot.innerHTML, /<div class="finding">&nbsp;<\/div>/);
+});
+
+test("pctLabel", () => {
+  const { pctLabel } = require("../dist/calibra-card.js");
+  assert.equal(pctLabel(40, "sv"), "40 % lägre");
+  assert.equal(pctLabel(-12, "sv"), "12 % högre");
+  assert.equal(pctLabel(0, "en"), "0% lower");
+});
