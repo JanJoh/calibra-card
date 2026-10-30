@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1 — 2026-10-30
+
+- **Legionella cycles in the tank view.** Periods when the pump's demand was "Anti legionella" are shaded in the chart, and a line says when the last cycle ran and roughly when the next one is due: the last start plus the median gap between starts over 15 days, or a week when there is only one. While a cycle runs it says so.
+
 ## 0.6.0 — 2026-10-30
 
 - **The hot water tank is clickable.** It opens a view with the tank's top and bottom temperatures as two curves over 1, 3 or 7 days (default 3, or `tank_hours`), from the recorder's history, with the tap water start and stop temperatures as dashed lines. The legend shows the current values; tapping one opens its more-info. "‹ Tillbaka" returns to the diagram.

@@ -267,7 +267,7 @@ test("the tank opens a chart of its top and bottom temperatures", async () => {
   // another period fetches again; the back button returns to the diagram
   c._onClick({ composedPath: () => [{ getAttribute: (a) => (a === "data-action" ? "tankrange" : a === "data-hours" ? "168" : null) }] });
   await new Promise((r) => setTimeout(r, 0));
-  assert.equal(asked.length, 2);
+  assert.equal(asked.length, 4, "each fetch asks for the tank and for the demand history");
   assert.match(html(c), /aria-pressed="true">7 dygn</);
   c._onClick({ composedPath: () => [{ getAttribute: (a) => (a === "data-action" ? "detail" : null) }] });
   assert.doesNotMatch(html(c), /Varmvattentanken/);
@@ -277,4 +277,28 @@ test("the tank opens a chart of its top and bottom temperatures", async () => {
 test("tankPoints skips states that are not numbers", () => {
   const { tankPoints } = require("../dist/calibra-card.js");
   assert.deepEqual(tankPoints([{ s: "50.5", lu: 10 }, { s: "unavailable", lu: 11 }, { s: "51", lc: 12 }]), [[10000, 50.5], [12000, 51]]);
+});
+
+test("legionella cycles are shaded, with the last one and roughly when the next is due", async () => {
+  const now = Date.now() / 1000, day = 86400;
+  const rows = Array.from({ length: 50 }, (_, i) => ({ s: String(50 + i % 5), lu: now - 3 * day + i * 5000 }));
+  // cycles 8 and 1 day(s) ago, an hour each: the next one is due in about 6 days
+  const demand = [{ s: "Heat", lu: now - 15 * day }, { s: "Anti legionella", lu: now - 8 * day }, { s: "Heat", lu: now - 8 * day + 3600 },
+    { s: "Anti legionella", lu: now - 1 * day }, { s: "Heat", lu: now - 1 * day + 3600 }];
+  const c = card();
+  c._hass.callWS = async (msg) => msg.entity_ids.includes(`sensor.${P}_first_prioritised_demand`)
+    ? { [`sensor.${P}_first_prioritised_demand`]: demand }
+    : { [`sensor.${P}_tap_water_top_temperature`]: rows, [`sensor.${P}_tap_water_lower_temperature`]: rows };
+  c._onClick({ composedPath: () => [{ getAttribute: (a) => (a === "data-action" ? "tank" : null) }] });
+  await new Promise((r) => setTimeout(r, 0));
+  const h = html(c);
+  assert.equal(count(h, 'class="legio"'), 1, "only the run inside the 3-day window is drawn");
+  assert.match(h, /Legionella senast [^<]*, nästa omkring /);
+  const { legionellaRuns, nextLegionella } = require("../dist/calibra-card.js");
+  const runs = legionellaRuns(demand, now * 1000);
+  assert.equal(runs.length, 2);
+  assert.equal(nextLegionella(runs), (now - 1 * day + 7 * day) * 1000);
+  // a cycle that is still running
+  const running = legionellaRuns([{ s: "Heat", lu: 1 }, { s: "Anti legionella", lu: 100 }], 500000);
+  assert.deepEqual(running, [{ start: 100000, end: 500000, ongoing: true }]);
 });

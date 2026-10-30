@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.6.0";
+const CARD_VERSION = "0.6.1";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -83,6 +83,7 @@ const T = {
     tankStart: (a) => `Laddning startar under ${a}`, tankStop: (b) => `slutar vid ${b}`,
     loading: "Hämtar historik…", noHistory: "Ingen historik för perioden.",
     ranges: [[24, "1 dygn"], [72, "3 dygn"], [168, "7 dygn"]],
+    legio: "Legionella", legioNow: "Legionella pågår nu", legioLast: (w) => `Legionella senast ${w}`, legioNext: (w) => `nästa omkring ${w}`,
   },
   en: {
     title: "Heat pump", borehole: "Borehole", in: "In", out: "Out", compressor: "Compressor",
@@ -107,6 +108,7 @@ const T = {
     tankStart: (a) => `Charging starts below ${a}`, tankStop: (b) => `stops at ${b}`,
     loading: "Loading history…", noHistory: "No history for this period.",
     ranges: [[24, "1 day"], [72, "3 days"], [168, "7 days"]],
+    legio: "Legionella", legioNow: "Legionella cycle running now", legioLast: (w) => `Legionella last ${w}`, legioNext: (w) => `next around ${w}`,
   },
 };
 
@@ -374,13 +376,17 @@ class CalibraCard extends HTMLElement {
     if (h && h.hours === hours && Date.now() - h.at < 5 * 60 * 1000) return;
     this._tankHist = { hours, at: Date.now(), loading: true, series: h?.hours === hours ? h.series : null };
     const end = new Date(), start = new Date(end.getTime() - hours * 3600 * 1000);
+    // The demand sensor over 15 days: legionella runs to shade, and the interval between them
+    const dStart = new Date(end.getTime() - Math.max(hours, 15 * 24) * 3600 * 1000);
+    const ask = (from, ids) => hass.callWS({
+      type: "history/history_during_period", start_time: from.toISOString(), end_time: end.toISOString(),
+      entity_ids: ids, minimal_response: true, no_attributes: true, significant_changes_only: false,
+    });
     try {
-      const r = await hass.callWS({
-        type: "history/history_during_period", start_time: start.toISOString(), end_time: end.toISOString(),
-        entity_ids: [e.tank_top, e.tank_bottom], minimal_response: true, no_attributes: true, significant_changes_only: false,
-      });
+      const [r, d] = await Promise.all([ask(start, [e.tank_top, e.tank_bottom]), e.demand ? ask(dStart, [e.demand]).catch(() => null) : null]);
       const series = [e.tank_top, e.tank_bottom].map((id) => tankPoints(r?.[id]));
-      this._tankHist = { hours, at: Date.now(), start: start.getTime(), end: end.getTime(), series };
+      const runs = legionellaRuns(d?.[e.demand], end.getTime());
+      this._tankHist = { hours, at: Date.now(), start: start.getTime(), end: end.getTime(), series, runs };
     } catch (err) {
       this._tankHist = { hours, at: Date.now(), error: String(err?.message || err) };
     }
@@ -400,11 +406,19 @@ class CalibraCard extends HTMLElement {
     if (!h || h.loading && !h.series) chart = `<div class="tmsg">${esc(t.loading)}</div>`;
     else if (h.error) chart = `<div class="tmsg">${esc(h.error)}</div>`;
     else if (!h.series || !h.series.some((pts) => pts.length)) chart = `<div class="tmsg">${esc(t.noHistory)}</div>`;
-    else chart = tankChart(h, a, b, lang);
+    else chart = tankChart(h, a, b, lang, t.legio);
+    // When the last legionella cycle ran, and roughly when the next one is due
+    let legio = "";
+    if (h?.runs?.length) {
+      const last = h.runs.at(-1), next = nextLegionella(h.runs);
+      legio = last.ongoing ? t.legioNow
+        : [t.legioLast(whenLong(last.start, lang)), next && next > Date.now() ? t.legioNext(whenLong(next, lang)) : ""].filter(Boolean).join(", ");
+    }
     return `<div class="detail">
       <div class="dhead"><div class="dtitle">${esc(t.tank)}</div><button class="back" data-action="detail">${esc(t.back)}</button></div>
       <div class="thead"><div class="tlegs">${leg("top", t.tankTop, top, e.tank_top)}${leg("bot", t.tankBottom, bot, e.tank_bottom)}</div><div class="rngs">${ranges}</div></div>
       ${limits}
+      ${legio ? `<div class="lbl tlim"><i class="lgsw"></i>${esc(legio)}</div>` : ""}
       ${chart}
     </div>`;
   }
@@ -638,8 +652,37 @@ function tankPoints(rows) {
   return out;
 }
 
+// Spans where the pump's demand was "Anti legionella": [{start, end, ongoing}] in ms
+function legionellaRuns(rows, nowMs) {
+  const out = [];
+  let cur = null;
+  for (const r of rows || []) {
+    const ts = (r.lu ?? r.lc) * 1000;
+    if (!Number.isFinite(ts)) continue;
+    if (r.s === "Anti legionella") { if (!cur) cur = { start: ts }; }
+    else if (cur) { out.push({ start: cur.start, end: ts, ongoing: false }); cur = null; }
+  }
+  if (cur) out.push({ start: cur.start, end: nowMs, ongoing: true });
+  return out;
+}
+
+// The next run: the last start plus the median gap between starts (a week when there is only one)
+function nextLegionella(runs) {
+  if (!runs?.length) return null;
+  const gaps = runs.slice(1).map((r, i) => r.start - runs[i].start).filter((g) => g > 3600e3).sort((a, b) => a - b);
+  const gap = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 7 * 24 * 3600e3;
+  return runs.at(-1).start + gap;
+}
+
+// "fre 23 okt 20:15"
+function whenLong(ms, lang) {
+  const d = new Date(ms);
+  const day = d.toLocaleDateString(lang === "sv" ? "sv-SE" : "en-GB", { weekday: "short", day: "numeric", month: "short" }).replace(/\.$/, "");
+  return `${day} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 // One line per series, averaged into time buckets so a week of 10-second readings stays light
-function tankChart(h, start, stop, lang) {
+function tankChart(h, start, stop, lang, legioLabel = "Legionella") {
   const W = 760, H = 260, L = 40, R = 748, T0 = 14, B = 230, buckets = 300;
   const t0 = h.start, t1 = h.end, span = Math.max(1, t1 - t0);
   const all = h.series.flat().map((p) => p[1]).concat([start, stop].filter((v) => v !== null));
@@ -675,6 +718,13 @@ function tankChart(h, start, stop, lang) {
     out += `<line x1="${x(ms)}" x2="${x(ms)}" y1="${T0}" y2="${B}" class="grid${mid ? " mid" : ""}"/><text x="${x(ms)}" y="${B + 16}" text-anchor="middle" class="ax">${esc(label)}</text>`;
   }
   for (const v of [start, stop]) if (v !== null && v >= lo && v <= hi) out += `<line x1="${L}" x2="${R}" y1="${y(v)}" y2="${y(v)}" class="lim"/><text x="${R}" y="${y(v) - 4}" text-anchor="end" class="ax">${v} °C</text>`;
+  // Legionella cycles as shaded bands (at least 4 px wide, so a short run on a week still shows)
+  for (const r of h.runs || []) {
+    if (r.end < t0 || r.start > t1) continue;
+    const xa = x(Math.max(r.start, t0)), xb = Math.max(xa + 4, x(Math.min(r.end, t1)));
+    out += `<rect x="${xa.toFixed(1)}" y="${T0}" width="${(xb - xa).toFixed(1)}" height="${B - T0}" class="legio"><title>${esc(legioLabel)} ${esc(whenLong(r.start, lang))}</title></rect>`;
+    out += `<text x="${((xa + xb) / 2).toFixed(1)}" y="${T0 - 3}" text-anchor="middle" class="ax legiotxt">${esc(legioLabel)}</text>`;
+  }
   out += `<path d="${line(h.series[1])}" class="tl bot"/><path d="${line(h.series[0])}" class="tl top"/>`;
   return out + "</svg>";
 }
@@ -773,6 +823,9 @@ svg.tchart .grid.mid { stroke: var(--secondary-text-color); stroke-opacity: 0.35
 svg.tchart .lim { stroke: var(--secondary-text-color); stroke-dasharray: 4 4; stroke-opacity: 0.7; }
 svg.tchart text.ax { fill: var(--secondary-text-color); font-size: 11px; }
 svg.tchart .tl { fill: none; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+svg.tchart .legio { fill: rgba(217, 130, 43, 0.18); }
+svg.tchart text.legiotxt { fill: #9a5a12; font-weight: 600; font-size: 10px; }
+.lgsw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: rgba(217, 130, 43, 0.35); margin-right: 6px; vertical-align: -1px; }
 `;
 
 // ---------------------------------------------------------------------------------------
@@ -1143,5 +1196,5 @@ if (!customElements.get("calibra-card")) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, sinceWhen, aggregateDays, fitQuad, refLabel, pctLabel, tankPoints, tankChart };   // for the tests
+  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, sinceWhen, aggregateDays, fitQuad, refLabel, pctLabel, tankPoints, tankChart, legionellaRuns, nextLegionella };   // for the tests
 }
