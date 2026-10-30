@@ -239,3 +239,42 @@ test("since: today as a time, then yesterday, then a date", () => {
   assert.equal(sinceWhen(new Date(2026, 9, 24, 22, 5).toISOString(), "sv", t, now), "igår 22:05");
   assert.equal(sinceWhen(new Date(2026, 9, 21, 9, 0).toISOString(), "sv", t, now), "21 okt 09:00");
 });
+
+test("the tank opens a chart of its top and bottom temperatures", async () => {
+  const now = Date.now() / 1000;
+  const rows = (v0, v1) => Array.from({ length: 50 }, (_, i) => ({ s: String(v0 + (v1 - v0) * i / 49), lu: now - 72 * 3600 + i * 5000 }));
+  const c = card({ [`number.${P}_start_temperature_tap_water`]: "40", [`number.${P}_stop_temperature_tap_water`]: "55" });
+  const asked = [];
+  c._hass.callWS = async (msg) => {
+    asked.push(msg);
+    return { [`sensor.${P}_tap_water_top_temperature`]: rows(46, 61.5), [`sensor.${P}_tap_water_lower_temperature`]: [{ s: "unavailable", lu: now - 3600 }, ...rows(42, 58)] };
+  };
+  // the tank in the diagram is a button now, not two more-info links
+  assert.match(html(c), /<g class="tank" data-action="tank" tabindex="0" role="button"/);
+  c._onClick({ composedPath: () => [{ getAttribute: (a) => (a === "data-action" ? "tank" : null) }] });
+  assert.match(html(c), /Varmvattentanken/);
+  assert.match(html(c), /Hämtar historik…/);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(asked[0].type, "history/history_during_period");
+  assert.deepEqual(asked[0].entity_ids, [`sensor.${P}_tap_water_top_temperature`, `sensor.${P}_tap_water_lower_temperature`]);
+  const h = html(c);
+  assert.equal(count(h, 'class="tl '), 2);
+  assert.match(h, /Laddning startar under 40 °C, slutar vid 55 °C/);
+  assert.equal(count(h, 'class="lim"'), 2);
+  assert.match(h, /data-entity="sensor\.diplomat_inverter_duo_tap_water_top_temperature"/);
+  assert.match(h, /aria-pressed="true">3 dygn</);
+  assert.ok(!h.includes("NaN"));
+  // another period fetches again; the back button returns to the diagram
+  c._onClick({ composedPath: () => [{ getAttribute: (a) => (a === "data-action" ? "tankrange" : a === "data-hours" ? "168" : null) }] });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(asked.length, 2);
+  assert.match(html(c), /aria-pressed="true">7 dygn</);
+  c._onClick({ composedPath: () => [{ getAttribute: (a) => (a === "data-action" ? "detail" : null) }] });
+  assert.doesNotMatch(html(c), /Varmvattentanken/);
+  assert.match(html(c), /data-action="tank"/);
+});
+
+test("tankPoints skips states that are not numbers", () => {
+  const { tankPoints } = require("../dist/calibra-card.js");
+  assert.deepEqual(tankPoints([{ s: "50.5", lu: 10 }, { s: "unavailable", lu: 11 }, { s: "51", lc: 12 }]), [[10000, 50.5], [12000, 51]]);
+});

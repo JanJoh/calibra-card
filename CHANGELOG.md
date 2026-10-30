@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0 — 2026-10-30
+
+- **The hot water tank is clickable.** It opens a view with the tank's top and bottom temperatures as two curves over 1, 3 or 7 days (default 3, or `tank_hours`), from the recorder's history, with the tap water start and stop temperatures as dashed lines. The legend shows the current values; tapping one opens its more-info. "‹ Tillbaka" returns to the diagram.
+- New default entities `tap_start` and `tap_stop` (`number.diplomat_inverter_duo_start/stop_temperature_tap_water`).
+
 ## 0.5.1 — 2026-10-29
 
 - **Energy signature:** the difference between the newest and the first period is shown at the reference line, after the temperature and in the newest period's colour ("6 °C · ute nu · 40 % lägre").

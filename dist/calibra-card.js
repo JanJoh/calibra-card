@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.5.1";
+const CARD_VERSION = "0.6.0";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -34,6 +34,8 @@ const DEFAULT_ENTITIES = {
   condenser_out: `sensor.${TG}_condenser_out_temperature`,
   tank_top: `sensor.${TG}_tap_water_top_temperature`,
   tank_bottom: `sensor.${TG}_tap_water_lower_temperature`,
+  tap_start: `number.${TG}_start_temperature_tap_water`,
+  tap_stop: `number.${TG}_stop_temperature_tap_water`,
   heating_season_active: `binary_sensor.${TG}_heating_season_active`,
   heating_season_stop: `number.${TG}_heating_season_stop_temperature`,
   integral: `sensor.${TG}_heating_season_integral_value`,
@@ -77,6 +79,10 @@ const T = {
     demands: { "No demand": "Inget behov", Heat: "Värme", "Hot water": "Varmvatten", "Anti legionella": "Legionella",
       Pool: "Pool", Cooling: "Kyla", "Passive cooling": "Passiv kyla", "Pool 2": "Pool 2", "Brine heating": "Brinevärmning" },
     heatStopChip: "Värmestopp",
+    tank: "Varmvattentanken", tankTop: "Topp", tankBottom: "Botten", tankOpen: "Visa varmvattentankens temperaturer",
+    tankStart: (a) => `Laddning startar under ${a}`, tankStop: (b) => `slutar vid ${b}`,
+    loading: "Hämtar historik…", noHistory: "Ingen historik för perioden.",
+    ranges: [[24, "1 dygn"], [72, "3 dygn"], [168, "7 dygn"]],
   },
   en: {
     title: "Heat pump", borehole: "Borehole", in: "In", out: "Out", compressor: "Compressor",
@@ -97,6 +103,10 @@ const T = {
     whyAlarm: "The heat pump has an active alarm.",
     demands: {},
     heatStopChip: "Heating stop",
+    tank: "Hot water tank", tankTop: "Top", tankBottom: "Bottom", tankOpen: "Show the hot water tank temperatures",
+    tankStart: (a) => `Charging starts below ${a}`, tankStop: (b) => `stops at ${b}`,
+    loading: "Loading history…", noHistory: "No history for this period.",
+    ranges: [[24, "1 day"], [72, "3 days"], [168, "7 days"]],
   },
 };
 
@@ -164,7 +174,9 @@ class CalibraCard extends HTMLElement {
       ...config,
       entities: { ...DEFAULT_ENTITIES, ...(config.entities || {}) },
     };
-    this._detail = false;
+    this._detail = false;   // false, "circuit" or "tank"
+    this._tankHours = this._config.tank_hours || 72;
+    this._tankHist = null;
     this._stats = {};
     this._statsAt = 0;
     this._sig = null;
@@ -354,6 +366,49 @@ class CalibraCard extends HTMLElement {
       ] }]);
   }
 
+  // The tank's two temperatures over the chosen period, from the recorder's history.
+  async _fetchTank() {
+    const hass = this._hass, e = this._config.entities, hours = this._tankHours;
+    if (!hass?.callWS) return;
+    const h = this._tankHist;
+    if (h && h.hours === hours && Date.now() - h.at < 5 * 60 * 1000) return;
+    this._tankHist = { hours, at: Date.now(), loading: true, series: h?.hours === hours ? h.series : null };
+    const end = new Date(), start = new Date(end.getTime() - hours * 3600 * 1000);
+    try {
+      const r = await hass.callWS({
+        type: "history/history_during_period", start_time: start.toISOString(), end_time: end.toISOString(),
+        entity_ids: [e.tank_top, e.tank_bottom], minimal_response: true, no_attributes: true, significant_changes_only: false,
+      });
+      const series = [e.tank_top, e.tank_bottom].map((id) => tankPoints(r?.[id]));
+      this._tankHist = { hours, at: Date.now(), start: start.getTime(), end: end.getTime(), series };
+    } catch (err) {
+      this._tankHist = { hours, at: Date.now(), error: String(err?.message || err) };
+    }
+    if (this._detail === "tank") this._render();
+  }
+
+  _tankHtml() {
+    const t = this._t, lang = this._lang, e = this._config.entities, hass = this._hass;
+    const top = num(hass, e.tank_top), bot = num(hass, e.tank_bottom);
+    const a = num(hass, e.tap_start), b = num(hass, e.tap_stop);
+    const h = this._tankHist;
+    const leg = (cls, label, v, ent) => `<div class="tleg" data-entity="${esc(ent)}"><i class="${cls}"></i><span class="lbl">${esc(label)}</span><span class="v">${esc(fmt(v, 1, "°C", lang))}</span></div>`;
+    const ranges = t.ranges.map(([hrs, label]) => `<button type="button" class="rng${hrs === this._tankHours ? " on" : ""}" data-action="tankrange" data-hours="${hrs}" aria-pressed="${hrs === this._tankHours}">${esc(label)}</button>`).join("");
+    const limits = a !== null || b !== null
+      ? `<div class="lbl tlim">${esc([a !== null ? t.tankStart(fmt(a, 0, "°C", lang)) : "", b !== null ? t.tankStop(fmt(b, 0, "°C", lang)) : ""].filter(Boolean).join(", "))}</div>` : "";
+    let chart;
+    if (!h || h.loading && !h.series) chart = `<div class="tmsg">${esc(t.loading)}</div>`;
+    else if (h.error) chart = `<div class="tmsg">${esc(h.error)}</div>`;
+    else if (!h.series || !h.series.some((pts) => pts.length)) chart = `<div class="tmsg">${esc(t.noHistory)}</div>`;
+    else chart = tankChart(h, a, b, lang);
+    return `<div class="detail">
+      <div class="dhead"><div class="dtitle">${esc(t.tank)}</div><button class="back" data-action="detail">${esc(t.back)}</button></div>
+      <div class="thead"><div class="tlegs">${leg("top", t.tankTop, top, e.tank_top)}${leg("bot", t.tankBottom, bot, e.tank_bottom)}</div><div class="rngs">${ranges}</div></div>
+      ${limits}
+      ${chart}
+    </div>`;
+  }
+
   _svg(m) {
     const t = this._t, c = COLORS, e = this._config.entities;
     const col = {
@@ -447,10 +502,12 @@ class CalibraCard extends HTMLElement {
   </g>
   ${m.seasonKnown ? `<g class="season" data-entity="${esc(e.heating_season_stop)}">${m.integral ? `<title>${esc(m.integral)}</title>` : ""}<rect x="568" y="140" width="136" height="20" rx="10" class="pill ${m.heatStop ? "stop" : ""}"/>${txt(636, 154, (m.heatStop ? t.heatStopOn : t.heatStopOff)(m.stopLimit), `xs ${m.heatStop ? "stoptxt strong" : ""}`, "", "middle")}</g>` : ""}
 
-  <rect x="470" y="180" width="72" height="140" rx="28" fill="url(#${tankId})" stroke="var(--divider-color, #c9cdd2)"/>
-  ${txt(506, 206, m.tankTop, `val ${m.tankTopC.dark ? "light" : ""}`, e.tank_top, "middle")}
-  ${txt(506, 254, "TWC", `xs opt ${m.tankTopC.dark ? "light" : ""}`, "", "middle")}
-  ${txt(506, 304, m.tankBot, `val ${m.tankBotC.dark ? "light" : ""}`, e.tank_bottom, "middle")}
+  <g class="tank" data-action="tank" tabindex="0" role="button" aria-label="${esc(t.tankOpen)}">
+    <rect x="470" y="180" width="72" height="140" rx="28" fill="url(#${tankId})" stroke="var(--divider-color, #c9cdd2)" class="tankbody"/>
+    ${txt(506, 206, m.tankTop, `val ${m.tankTopC.dark ? "light" : ""}`, "", "middle")}
+    ${txt(506, 254, "TWC", `xs opt ${m.tankTopC.dark ? "light" : ""}`, "", "middle")}
+    ${txt(506, 304, m.tankBot, `val ${m.tankBotC.dark ? "light" : ""}`, "", "middle")}
+  </g>
 
   ${m.heater ? `
   ${pipe(542, 198, 590, 198, col.tap)}
@@ -485,7 +542,9 @@ class CalibraCard extends HTMLElement {
     ].filter((x) => x[1] !== null).map(([l, v, ent]) => `<div class="hstat" data-entity="${esc(ent)}"><div class="lbl">${esc(l)}</div><div class="v">${esc(v)}</div></div>`).join("");
 
     let body;
-    if (this._detail) {
+    if (this._detail === "tank") {
+      body = this._tankHtml();
+    } else if (this._detail) {
       const d = this._detailModel();
       body = `<div class="detail">
         <div class="dhead"><div class="dtitle">${esc(t.circuit.replace(" ›", ""))}</div><button class="back" data-action="detail">${esc(t.back)}</button></div>
@@ -549,14 +608,75 @@ class CalibraCard extends HTMLElement {
         this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: el.getAttribute("data-entity") } }));
         return;
       }
-      if (el.getAttribute("data-action") === "detail") {
-        this._detail = !this._detail;
+      const act = el.getAttribute("data-action");
+      if (act === "detail") {
+        // the refrigerant circuit's button, and every view's "Back"
+        this._detail = this._detail ? false : "circuit";
         this._sig = null;
         this._render();
         return;
       }
+      if (act === "tank" || act === "tankrange") {
+        if (act === "tankrange") this._tankHours = Number(el.getAttribute("data-hours")) || 72;
+        this._detail = "tank";
+        this._sig = null;
+        this._render();
+        this._fetchTank();
+        return;
+      }
     }
   }
+}
+
+// Compressed history rows ({s, lu}) → [[ms, °C]], skipping non-numeric states
+function tankPoints(rows) {
+  const out = [];
+  for (const r of rows || []) {
+    const v = parseFloat(r.s), ts = (r.lu ?? r.lc) * 1000;
+    if (Number.isFinite(v) && Number.isFinite(ts)) out.push([ts, v]);
+  }
+  return out;
+}
+
+// One line per series, averaged into time buckets so a week of 10-second readings stays light
+function tankChart(h, start, stop, lang) {
+  const W = 760, H = 260, L = 40, R = 748, T0 = 14, B = 230, buckets = 300;
+  const t0 = h.start, t1 = h.end, span = Math.max(1, t1 - t0);
+  const all = h.series.flat().map((p) => p[1]).concat([start, stop].filter((v) => v !== null));
+  const lo = Math.floor((Math.min(...all) - 2) / 5) * 5, hi = Math.ceil((Math.max(...all) + 2) / 5) * 5;
+  const x = (ms) => L + (ms - t0) / span * (R - L), y = (v) => B - (v - lo) / Math.max(1, hi - lo) * (B - T0);
+  const line = (pts) => {
+    const sums = new Map();
+    for (const [ms, v] of pts) {
+      if (ms < t0 || ms > t1) continue;
+      const k = Math.min(buckets - 1, Math.floor((ms - t0) / span * buckets));
+      const a = sums.get(k) || sums.set(k, [0, 0]).get(k);
+      a[0] += v; a[1] += 1;
+    }
+    // Hold the value from before the period until the first reading in it
+    const before = pts.filter(([ms]) => ms < t0).at(-1);
+    const keys = [...sums.keys()].sort((a, b) => a - b);
+    const xy = keys.map((k) => [t0 + (k + 0.5) / buckets * span, sums.get(k)[0] / sums.get(k)[1]]);
+    if (before) xy.unshift([t0, before[1]]);
+    if (xy.length) xy.push([t1, xy.at(-1)[1]]);
+    return xy.map(([ms, v], i) => `${i ? "L" : "M"}${x(ms).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  };
+  const step = hi - lo > 40 ? 10 : 5;
+  let out = `<svg class="tchart" viewBox="0 0 ${W} ${H + 20}" role="img" aria-label="${lang === "sv" ? "Tankens temperaturer" : "Tank temperatures"}">`;
+  for (let v = lo; v <= hi; v += step) out += `<line x1="${L}" x2="${R}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" class="ax">${v}</text>`;
+  // Time ticks: every 6 h for a day, every 12 h for three, midnights for a week
+  const tickH = span <= 26 * 3600e3 ? 6 : span <= 80 * 3600e3 ? 12 : 24;
+  const d = new Date(t0); d.setMinutes(0, 0, 0); d.setHours(Math.ceil(d.getHours() / tickH) * tickH);
+  for (let ms = d.getTime(); ms <= t1; ms += tickH * 3600e3) {
+    const dt = new Date(ms), mid = dt.getHours() === 0;
+    const label = tickH === 24 || mid
+      ? dt.toLocaleDateString(lang === "sv" ? "sv-SE" : "en-GB", { weekday: "short", day: "numeric" })
+      : `${String(dt.getHours()).padStart(2, "0")}:00`;
+    out += `<line x1="${x(ms)}" x2="${x(ms)}" y1="${T0}" y2="${B}" class="grid${mid ? " mid" : ""}"/><text x="${x(ms)}" y="${B + 16}" text-anchor="middle" class="ax">${esc(label)}</text>`;
+  }
+  for (const v of [start, stop]) if (v !== null && v >= lo && v <= hi) out += `<line x1="${L}" x2="${R}" y1="${y(v)}" y2="${y(v)}" class="lim"/><text x="${R}" y="${y(v) - 4}" text-anchor="end" class="ax">${v} °C</text>`;
+  out += `<path d="${line(h.series[1])}" class="tl bot"/><path d="${line(h.series[0])}" class="tl top"/>`;
+  return out + "</svg>";
 }
 
 const STYLE = `
@@ -633,6 +753,26 @@ svg .dim text { opacity: 0.6; }
 .drow { display: flex; justify-content: space-between; cursor: pointer; }
 .drow .lbl { font-size: 13px; }
 .hr { height: 1px; background: var(--divider-color); }
+svg .tank { cursor: pointer; outline: none; }
+svg .tank:hover .tankbody, svg .tank:focus-visible .tankbody { stroke: var(--primary-color); stroke-width: 2; }
+.thead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tlegs { display: flex; gap: 18px; flex-wrap: wrap; }
+.tleg { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.tleg i { width: 14px; height: 4px; border-radius: 2px; display: inline-block; }
+.tleg i.top, svg .tl.top { background: #d0453a; stroke: #d0453a; }
+.tleg i.bot, svg .tl.bot { background: #2f6fb3; stroke: #2f6fb3; }
+.tleg .lbl { font-size: 13px; }
+.rngs { display: flex; gap: 4px; }
+.rng { font: inherit; font-size: 12px; padding: 6px 10px; min-height: 32px; border-radius: 16px; border: 1px solid var(--divider-color, #d5d9de); background: none; color: var(--primary-text-color); cursor: pointer; }
+.rng.on { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
+.tlim { font-size: 12px; }
+.tmsg { font-size: 13px; color: var(--secondary-text-color); padding: 40px 0; text-align: center; }
+svg.tchart { width: 100%; height: auto; display: block; font-family: inherit; }
+svg.tchart .grid { stroke: var(--divider-color, #e3e6ea); }
+svg.tchart .grid.mid { stroke: var(--secondary-text-color); stroke-opacity: 0.35; }
+svg.tchart .lim { stroke: var(--secondary-text-color); stroke-dasharray: 4 4; stroke-opacity: 0.7; }
+svg.tchart text.ax { fill: var(--secondary-text-color); font-size: 11px; }
+svg.tchart .tl { fill: none; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
 `;
 
 // ---------------------------------------------------------------------------------------
@@ -1003,5 +1143,5 @@ if (!customElements.get("calibra-card")) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, sinceWhen, aggregateDays, fitQuad, refLabel, pctLabel };   // for the tests
+  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, sinceWhen, aggregateDays, fitQuad, refLabel, pctLabel, tankPoints, tankChart };   // for the tests
 }

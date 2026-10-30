@@ -81,6 +81,10 @@ notices:
 
 "Today" values (energy and the lowest brine temperature) come from long-term statistics and refresh every 5 minutes.
 
+### Hot water tank
+
+Tap the tank in the diagram to see its top and bottom temperatures as two curves over 1, 3 or 7 days (`tank_hours` sets the default, 72), with the tap water start and stop temperatures (`tap_start`, `tap_stop`) as dashed lines. Tap a value in the legend for its more-info dialog.
+
 ## Energy signature card
 
 `custom:calibra-signature-card`, in the same file, compares the heat pump's daily electricity use against the daily mean outdoor temperature across periods, for example before and after replacing the pump. It reads hourly long-term statistics from the recorder, keeps only complete days, and draws:
