@@ -50,14 +50,14 @@ type: custom:calibra-card
 title: Calibra · bergvärme
 borehole_depth: 88
 entities:
-  power: sensor.heat_pump_power        # W, shown in the header
-  energy: sensor.heat_pump_energy      # kWh, "today" from statistics
+  power: sensor.heat_pump_power             # W, shown in the header
+  energy: sensor.heat_pump_energy           # kWh, "today" from statistics
   price: sensor.electricity_price
-  valve: binary_sensor.hot_water_valve   # on = hot water
-  heater_power: sensor.water_heater_power              # separate water heater
+  valve: binary_sensor.hot_water_valve      # on = hot water
+  heater_power: sensor.water_heater_power   # separate water heater
   heater_energy: sensor.water_heater_energy
   immersion: sensor.diplomat_inverter_duo_internal_additional_heater_current_step   # disabled by default in thermiagenesis
-  immersion_hours:
+  immersion_hours:                          # from Thermia Online, for example
     - sensor.thermia_auxiliary_heater_1_operational_time
     - sensor.thermia_auxiliary_heater_2_operational_time
   alarm_classes:
@@ -65,7 +65,7 @@ entities:
     - binary_sensor.calibra_alarm_active_class_e
 notices:
   - entity: input_boolean.load_guard
-    text: Bastuvakten begränsar kompressorn.
+    text: The load guard limits the compressor.
 ```
 
 | Option | Description |
@@ -95,7 +95,7 @@ Tap the tank in the diagram to see its top and bottom temperatures as two curves
 ```yaml
 type: custom:calibra-signature-card
 title: Gammal mot ny värmepump
-energy: sensor.heat_pump_energy        # kWh, total_increasing
+energy: sensor.heat_pump_energy                            # kWh, total_increasing
 temperature: sensor.netatmo_outdoor_temperature            # °C, measurement
 start: "2025-10-01"
 reference: 5                                               # °C, or an entity to follow, e.g. sensor.outdoor_temperature
