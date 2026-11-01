@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.2 — 2026-11-01
+
+- **Brine colours follow temperature.** The colder side, brine out on its way back to the borehole, is now the deeper blue and brine in the paler one, the same way the radiator supply is a stronger orange than the return.
+
 ## 0.6.1 — 2026-10-30
 
 - **Legionella cycles in the tank view.** Periods when the pump's demand was "Anti legionella" are shaded in the chart, and a line says when the last cycle ran and roughly when the next one is due: the last start plus the median gap between starts over 15 days, or a week when there is only one. While a cycle runs it says so.
