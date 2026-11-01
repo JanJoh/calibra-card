@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 — 2026-11-01
+
+- The floor heating row says "går" or "står" (English "running"/"stopped") instead of the pump's power, which read like the heating power. `floor_pump_power` now only opens on tap.
+
 ## 0.7.0 — 2026-11-01
 
 - **Floor heating pump.** New optional `entities.floor_pump` (switch or binary sensor) and `entities.floor_pump_power` (W). When set, the radiator box gets a "Golvvärme" row with a small pump symbol that turns orange and spins while the pump runs, and its power ("29 W") or "står" when it is off. ΔT moves up to the box's title row to make room. The label shortens to "Golv" in the compact layout. Tap the symbol for the pump, the value for its power.

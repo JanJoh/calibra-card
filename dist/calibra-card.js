@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.7.0";
+const CARD_VERSION = "0.7.1";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -63,7 +63,7 @@ const T = {
   sv: {
     title: "Värmepump", borehole: "Borrhål", in: "In", out: "Ut", compressor: "Kompressor",
     stopped: "Står still", brinePump: "Brinepump", condPump: "Kondensorpump", immersion: "Intern elpatron", immersionShort: "Elpatron",
-    off: "av", on: "på", circuit: "Kylkrets ›", radiators: "Radiatorer", supply: "Fram", ret: "Retur", floor: "Golvvärme", floorShort: "Golv", floorOff: "står",
+    off: "av", on: "på", circuit: "Kylkrets ›", radiators: "Radiatorer", supply: "Fram", ret: "Retur", floor: "Golvvärme", floorShort: "Golv", floorOn: "går", floorOff: "står",
     valve: "Ventil →", toHeat: "värme", toTap: "varmvatten", heater: "Beredare", heaterSub: "Egen termostat",
     heaterIdle: "vilar", heaterOn: "värmer", taps: "Kranar", outdoor: "Ute", power: "Effekt nu", price: "Elpris",
     heatStopOn: (t) => `Värmestopp på${t}`, heatStopOff: (t) => `Värmestopp av${t}`, limit: (t) => ` (${t})`,
@@ -89,7 +89,7 @@ const T = {
   en: {
     title: "Heat pump", borehole: "Borehole", in: "In", out: "Out", compressor: "Compressor",
     stopped: "Stopped", brinePump: "Brine pump", condPump: "Condenser pump", immersion: "Immersion heater", immersionShort: "Immersion",
-    off: "off", on: "on", circuit: "Refrigerant ›", radiators: "Radiators", supply: "Supply", ret: "Return", floor: "Floor heating", floorShort: "Floor", floorOff: "off",
+    off: "off", on: "on", circuit: "Refrigerant ›", radiators: "Radiators", supply: "Supply", ret: "Return", floor: "Floor heating", floorShort: "Floor", floorOn: "running", floorOff: "stopped",
     valve: "Valve →", toHeat: "heating", toTap: "hot water", heater: "Water heater", heaterSub: "Own thermostat",
     heaterIdle: "idle", heaterOn: "heating", taps: "Taps", outdoor: "Outdoor", power: "Power", price: "Price",
     heatStopOn: (t) => `Heating stop on${t}`, heatStopOff: (t) => `Heating stop off${t}`, limit: (t) => ` (${t})`,
@@ -317,7 +317,8 @@ class CalibraCard extends HTMLElement {
       supply: heatOn || heatStop ? fmt(n("condenser_out"), 1, "°", lang) : fmt(n("condenser_out"), 1, "°", lang),
       ret: fmt(n("condenser_in"), 1, "°", lang),
       heatDt: n("condenser_out") !== null && n("condenser_in") !== null ? fmt(n("condenser_out") - n("condenser_in"), 1, "", lang) : "–",
-      floor: e.floor_pump ? (() => { const on = isOn(hass, e.floor_pump); const w = num(hass, e.floor_pump_power); return { on, text: on ? (w !== null ? fmt(w, 0, "W", lang) : t.on) : t.floorOff }; })() : null,
+      // The pump row says whether it runs; the power sensor, when configured, opens on tap.
+      floor: e.floor_pump ? (() => { const on = isOn(hass, e.floor_pump); return { on, text: on ? t.floorOn : t.floorOff }; })() : null,
       heatStop, seasonKnown: !!e.heating_season_active && str(hass, e.heating_season_active) !== null,
       stopLimit: stopT !== null ? t.limit(fmt(stopT, 0, "°C", lang)) : "",
       integral: n("integral") !== null ? `${t.seasonIntegral} ${fmt(n("integral"), 0, "", lang)}` : "",
