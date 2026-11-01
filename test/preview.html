@@ -38,17 +38,17 @@
     [`sensor.${P}_bubble_point`]: "27.41", [`sensor.${P}_dew_point`]: "1.25", [`sensor.${P}_compressor_operating_hours`]: "658",
     [`sensor.${P}_tap_water_operating_hours`]: "113", [`binary_sensor.${P}_power_input_phase_detection_alarm`]: "off",
     "sensor.vp_power": "1420", "binary_sensor.valve": "off", "sensor.heater_power": "0", "sensor.price": "1.2227",
-    "sensor.imm1": "16", "sensor.imm2": "12", "input_boolean.sauna": "off", "sensor.immersion": "0",
+    "sensor.imm1": "16", "switch.floor": "on", "sensor.floor_w": "28.6", "sensor.imm2": "12", "input_boolean.sauna": "off", "sensor.immersion": "0",
   };
   const modes = {
     heat: {},
-    hw: { [`sensor.${P}_first_prioritised_demand`]: "Hot water", "binary_sensor.valve": "on", [`number.${P}_maximum_allowed_gear_in_tap_water`]: "3",
+    hw: { "switch.floor": "off", "sensor.floor_w": "0", [`sensor.${P}_first_prioritised_demand`]: "Hot water", "binary_sensor.valve": "on", [`number.${P}_maximum_allowed_gear_in_tap_water`]: "3",
       [`sensor.${P}_compressor_current_gear`]: "3", "input_boolean.sauna": "on", "sensor.heater_power": "2800", "sensor.vp_power": "4310",
       [`sensor.${P}_tap_water_top_temperature`]: "44", [`sensor.${P}_tap_water_lower_temperature`]: "38.5", "sensor.immersion": "1" },
     stop: { [`binary_sensor.${P}_heating_season_active`]: "off", [`binary_sensor.${P}_compressor_control_signal`]: "off",
       [`sensor.${P}_first_prioritised_demand`]: "No demand", [`sensor.${P}_outdoor_temperature`]: "18.4", [`sensor.${P}_brine_circulation_pump_speed`]: "0",
       [`sensor.${P}_condenser_circulation_pump_speed`]: "0", "sensor.vp_power": "14" },
-    idle: { [`binary_sensor.${P}_compressor_control_signal`]: "off", [`sensor.${P}_first_prioritised_demand`]: "No demand",
+    idle: { "switch.floor": "off", "sensor.floor_w": "0", [`binary_sensor.${P}_compressor_control_signal`]: "off", [`sensor.${P}_first_prioritised_demand`]: "No demand",
       [`sensor.${P}_brine_circulation_pump_speed`]: "0", [`sensor.${P}_condenser_circulation_pump_speed`]: "42", "sensor.vp_power": "16",
       [`sensor.${P}_compressor_current_gear`]: "0", [`sensor.${P}_compressor_speed_percent`]: "0", [`sensor.${P}_compressor_speed_rpm`]: "0" },
   };
@@ -60,7 +60,7 @@
   c.setConfig({
     borehole_depth: 88,
     entities: { power: "sensor.vp_power", valve: "binary_sensor.valve", heater_power: "sensor.heater_power", price: "sensor.price",
-      immersion: "sensor.immersion", immersion_hours: ["sensor.imm1", "sensor.imm2"], energy: "sensor.e1", heater_energy: "sensor.e2" },
+      immersion: "sensor.immersion", floor_pump: "switch.floor", floor_pump_power: "sensor.floor_w", immersion_hours: ["sensor.imm1", "sensor.imm2"], energy: "sensor.e1", heater_energy: "sensor.e2" },
     notices: [{ entity: "input_boolean.sauna", text: "Bastuvakten begränsar kompressorn." }],
   });
   c._stats = { pump: 9.8, heater: 1.9, brine: 1.6 };

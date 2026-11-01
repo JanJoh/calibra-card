@@ -302,3 +302,20 @@ test("legionella cycles are shaded, with the last one and roughly when the next 
   const running = legionellaRuns([{ s: "Heat", lu: 1 }, { s: "Anti legionella", lu: 100 }], 500000);
   assert.deepEqual(running, [{ start: 100000, end: 500000, ongoing: true }]);
 });
+
+test("floor heating pump: row in the radiator box when configured", () => {
+  const extra = { "switch.floor": "on", "sensor.floor_w": "28.6" };
+  const c = card(extra, { entities: { ...SITE, floor_pump: "switch.floor", floor_pump_power: "sensor.floor_w" } });
+  const m = c._model();
+  assert.deepEqual(m.floor, { on: true, text: "29 W" });
+  assert.match(html(c), />Golvvärme</);
+  assert.match(html(c), />29 W</);
+  const off = card({ "switch.floor": "off", "sensor.floor_w": "0" }, { entities: { ...SITE, floor_pump: "switch.floor", floor_pump_power: "sensor.floor_w" } });
+  assert.equal(off._model().floor.text, "står");
+});
+
+test("no floor heating row without the option", () => {
+  const c = card();
+  assert.equal(c._model().floor, null);
+  assert.ok(!html(c).includes("Golvvärme"));
+});

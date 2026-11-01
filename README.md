@@ -10,6 +10,7 @@ It draws the system as it is actually plumbed:
 - **Internal immersion heater:** its active step, drawn as a bar like the gears.
 - **Diverting valve:** splits the supply between the radiators and the TWC tank. The arrow turns and the inactive branch greys out.
 - **Radiators:** supply, return, ΔT and heating stop (on/off and its limit).
+- **Optional floor heating pump:** a circulation pump for a separate floor heating loop, drawn as a row in the radiator box with its own pump symbol and power.
 - **TWC tank:** top and bottom temperature, coloured by temperature.
 - **Optional separate water heater** in series after the tank, with its own thermostat, plus the taps.
 
@@ -56,6 +57,8 @@ entities:
   valve: binary_sensor.hot_water_valve      # on = hot water
   heater_power: sensor.water_heater_power   # separate water heater
   heater_energy: sensor.water_heater_energy
+  floor_pump: switch.floor_heating_pump              # optional floor heating circulation pump
+  floor_pump_power: sensor.floor_heating_pump_power  # W, shown next to it
   immersion: sensor.diplomat_inverter_duo_internal_additional_heater_current_step   # disabled by default in thermiagenesis
   immersion_hours:                          # from Thermia Online, for example
     - sensor.thermia_auxiliary_heater_1_operational_time
@@ -75,6 +78,8 @@ notices:
 | `entities.<key>` | Override any entity. The keys are listed in `DEFAULT_ENTITIES` at the top of `dist/calibra-card.js`. |
 | `entities.valve` | Binary sensor that is `on` while the valve points to hot water. Without it the card infers the valve position from the demand. |
 | `entities.immersion` | Binary sensor (`on`) or step sensor (`> 0`) for the internal immersion heater. Thermiagenesis has these entities, but they are disabled by default. |
+| `entities.floor_pump` | Switch or binary sensor (`on` = running) for a floor heating circulation pump. Adds a "Golvvärme" row to the radiator box. |
+| `entities.floor_pump_power` | Optional power sensor for that pump (W); shown instead of "on" while it runs. |
 | `immersion_steps` | Number of immersion heater steps drawn as a bar like the compressor's gears (default `3`). |
 | `immersion_step_kw` | Optional kW per step; shows the current power, e.g. "6 kW", next to the bar. |
 | `notices` | A list of `{entity, state (default "on"), text}`. Each text is added to the explanation line while its entity is in that state. |

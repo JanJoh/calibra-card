@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.6.2";
+const CARD_VERSION = "0.7.0";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -63,7 +63,7 @@ const T = {
   sv: {
     title: "Värmepump", borehole: "Borrhål", in: "In", out: "Ut", compressor: "Kompressor",
     stopped: "Står still", brinePump: "Brinepump", condPump: "Kondensorpump", immersion: "Intern elpatron", immersionShort: "Elpatron",
-    off: "av", on: "på", circuit: "Kylkrets ›", radiators: "Radiatorer", supply: "Fram", ret: "Retur",
+    off: "av", on: "på", circuit: "Kylkrets ›", radiators: "Radiatorer", supply: "Fram", ret: "Retur", floor: "Golvvärme", floorShort: "Golv", floorOff: "står",
     valve: "Ventil →", toHeat: "värme", toTap: "varmvatten", heater: "Beredare", heaterSub: "Egen termostat",
     heaterIdle: "vilar", heaterOn: "värmer", taps: "Kranar", outdoor: "Ute", power: "Effekt nu", price: "Elpris",
     heatStopOn: (t) => `Värmestopp på${t}`, heatStopOff: (t) => `Värmestopp av${t}`, limit: (t) => ` (${t})`,
@@ -89,7 +89,7 @@ const T = {
   en: {
     title: "Heat pump", borehole: "Borehole", in: "In", out: "Out", compressor: "Compressor",
     stopped: "Stopped", brinePump: "Brine pump", condPump: "Condenser pump", immersion: "Immersion heater", immersionShort: "Immersion",
-    off: "off", on: "on", circuit: "Refrigerant ›", radiators: "Radiators", supply: "Supply", ret: "Return",
+    off: "off", on: "on", circuit: "Refrigerant ›", radiators: "Radiators", supply: "Supply", ret: "Return", floor: "Floor heating", floorShort: "Floor", floorOff: "off",
     valve: "Valve →", toHeat: "heating", toTap: "hot water", heater: "Water heater", heaterSub: "Own thermostat",
     heaterIdle: "idle", heaterOn: "heating", taps: "Taps", outdoor: "Outdoor", power: "Power", price: "Price",
     heatStopOn: (t) => `Heating stop on${t}`, heatStopOff: (t) => `Heating stop off${t}`, limit: (t) => ` (${t})`,
@@ -317,6 +317,7 @@ class CalibraCard extends HTMLElement {
       supply: heatOn || heatStop ? fmt(n("condenser_out"), 1, "°", lang) : fmt(n("condenser_out"), 1, "°", lang),
       ret: fmt(n("condenser_in"), 1, "°", lang),
       heatDt: n("condenser_out") !== null && n("condenser_in") !== null ? fmt(n("condenser_out") - n("condenser_in"), 1, "", lang) : "–",
+      floor: e.floor_pump ? (() => { const on = isOn(hass, e.floor_pump); const w = num(hass, e.floor_pump_power); return { on, text: on ? (w !== null ? fmt(w, 0, "W", lang) : t.on) : t.floorOff }; })() : null,
       heatStop, seasonKnown: !!e.heating_season_active && str(hass, e.heating_season_active) !== null,
       stopLimit: stopT !== null ? t.limit(fmt(stopT, 0, "°C", lang)) : "",
       integral: n("integral") !== null ? `${t.seasonIntegral} ${fmt(n("integral"), 0, "", lang)}` : "",
@@ -513,7 +514,13 @@ class CalibraCard extends HTMLElement {
     ${txt(572, 72, t.radiators, "lbl")}
     ${txt(572, 94, t.supply, "sm")}${txt(700, 94, m.supply, "val", e.condenser_out, "end")}
     ${txt(572, 114, t.ret, "sm")}${txt(700, 114, m.ret, "val", e.condenser_in, "end")}
-    ${txt(572, 132, `ΔT ${m.heatDt}`, "lbl opt")}
+    ${m.floor ? `${txt(700, 72, `ΔT ${m.heatDt}`, "lbl opt", "", "end")}
+    <g class="pump" data-entity="${esc(e.floor_pump)}">
+      <circle cx="579" cy="128" r="7" class="pumpbg"/>
+      <circle cx="579" cy="128" r="7" fill="none" stroke="${m.floor.on ? COLORS.heat : "var(--calibra-seg, rgba(127, 127, 127, 0.28))"}" stroke-width="2.5"/>
+      <g class="${m.floor.on ? "spin" : ""}"><path d="M576 125l6 3-6 3z" fill="${m.floor.on ? COLORS.heat : "var(--calibra-idle, #c9cdd2)"}"/></g>
+    </g>
+    ${txt(592, 132, t.floor, "sm full")}${txt(592, 133, t.floorShort, "sm short")}${txt(700, 132, m.floor.text, "val", e.floor_pump_power || e.floor_pump, "end")}` : txt(572, 132, `ΔT ${m.heatDt}`, "lbl opt")}
   </g>
   ${m.seasonKnown ? `<g class="season" data-entity="${esc(e.heating_season_stop)}">${m.integral ? `<title>${esc(m.integral)}</title>` : ""}<rect x="568" y="140" width="136" height="20" rx="10" class="pill ${m.heatStop ? "stop" : ""}"/>${txt(636, 154, (m.heatStop ? t.heatStopOn : t.heatStopOff)(m.stopLimit), `xs ${m.heatStop ? "stoptxt strong" : ""}`, "", "middle")}</g>` : ""}
 
