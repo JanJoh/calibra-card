@@ -101,7 +101,9 @@ Tap the tank in the diagram to see its top and bottom temperatures as two curves
 type: custom:calibra-signature-card
 title: Gammal mot ny värmepump
 energy: sensor.heat_pump_energy                            # kWh, total_increasing
-temperature: sensor.netatmo_outdoor_temperature            # °C, measurement
+temperature:                                               # °C, measurement: one entity or a list
+  - sensor.netatmo_outdoor_temperature
+  - sensor.outdoor_temperature_backup
 start: "2025-10-01"
 reference: 5                                               # °C, or an entity to follow, e.g. sensor.outdoor_temperature
 periods:
@@ -109,7 +111,12 @@ periods:
     end: "2026-06-15"
   - name: Ny pump
     start: "2026-09-25"
+exclude:                                                   # optional, dropped from every period
+  - start: "2026-01-01"
+    end: "2026-03-01"
 ```
+
+A day counts when it has 24 hours of energy and at least 20 hours of temperature. With a list under `temperature`, each hour takes the first sensor that has a value, so an outage in the main sensor is filled from the next one instead of losing the day. `exclude` leaves out date ranges with bad data (start inclusive, end exclusive, like the periods).
 
 The last period is drawn as the highlighted one. A curve's value at the reference temperature is shown only when that period has data on both sides of it.
 

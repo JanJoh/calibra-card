@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.7.1";
+const CARD_VERSION = "0.8.0";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -871,6 +871,21 @@ function aggregateDays(energyRows, tempRows) {
 }
 
 // Least-squares y = a + b·t + c·t² (falls back to a straight line for narrow ranges).
+// Several temperature sources (an id or a list): for each hour the first one with a value
+// is used, so a gap in the main sensor is filled from the next instead of losing the day.
+function mergeTemps(rowsPerSource) {
+  const byHour = new Map();
+  for (const rows of rowsPerSource) {
+    for (const r of rows || []) {
+      if (r.mean === null || r.mean === undefined || byHour.has(r.start)) continue;
+      byHour.set(r.start, r);
+    }
+  }
+  return [...byHour.values()].sort((a, b) => a.start - b.start);
+}
+
+const asList = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+
 function fitQuad(points) {
   const n = points.length;
   if (n < 3) return null;
@@ -903,7 +918,7 @@ class CalibraSignatureCard extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config?.energy || !config?.temperature) throw new Error("energy and temperature are required");
+    if (!config?.energy || !asList(config?.temperature).length) throw new Error("energy and temperature are required");
     if (!Array.isArray(config.periods) || !config.periods.length) throw new Error("periods must be a non-empty list");
     this._config = { reference: 5, title: null, ...config };
     this._days = null;
@@ -954,11 +969,11 @@ class CalibraSignatureCard extends HTMLElement {
       const r = await this._hass.callWS({
         type: "recorder/statistics_during_period",
         start_time: new Date(c.start || Date.now() - 365 * 864e5).toISOString(),
-        statistic_ids: [c.energy, c.temperature],
+        statistic_ids: [c.energy, ...asList(c.temperature)],
         period: "hour",
         types: ["change", "mean"],
       });
-      this._days = aggregateDays(r[c.energy], r[c.temperature]);
+      this._days = aggregateDays(r[c.energy], mergeTemps(asList(c.temperature).map((id) => r[id])));
       this._error = null;
     } catch (err) {
       this._error = String(err?.message || err);
@@ -967,7 +982,9 @@ class CalibraSignatureCard extends HTMLElement {
   }
 
   _model() {
-    const c = this._config, days = this._days || [], ref = this._ref();
+    const c = this._config, ref = this._ref();
+    // `exclude` drops date ranges (start inclusive, end exclusive) from every period
+    const days = (this._days || []).filter((d) => !asList(c.exclude).some((x) => (x?.start || x?.end) && inPeriod(d.date, x)));
     const series = c.periods.map((p, i) => {
       const pts = days.filter((d) => inPeriod(d.date, p));
       const f = pts.length >= 5 ? fitQuad(pts) : null;
@@ -1205,5 +1222,5 @@ if (!customElements.get("calibra-card")) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, sinceWhen, aggregateDays, fitQuad, refLabel, pctLabel, tankPoints, tankChart, legionellaRuns, nextLegionella };   // for the tests
+  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, sinceWhen, aggregateDays, mergeTemps, fitQuad, refLabel, pctLabel, tankPoints, tankChart, legionellaRuns, nextLegionella };   // for the tests
 }

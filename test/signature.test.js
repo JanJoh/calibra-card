@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 require("./dom-shim");
-const { CalibraSignatureCard, aggregateDays, fitQuad } = require("../dist/calibra-card.js");
+const { CalibraSignatureCard, aggregateDays, mergeTemps, fitQuad } = require("../dist/calibra-card.js");
 
 // 24 hourly rows starting at local midnight of the given day
 const hours = (day, fn) => Array.from({ length: 24 }, (_, h) => ({ start: new Date(`${day}T${String(h).padStart(2, "0")}:00:00`).getTime(), ...fn(h) }));
@@ -139,4 +139,40 @@ test("pctLabel", () => {
   assert.equal(pctLabel(40, "sv"), "40 % lägre");
   assert.equal(pctLabel(-12, "sv"), "12 % högre");
   assert.equal(pctLabel(0, "en"), "0% lower");
+});
+
+test("mergeTemps fills hours missing from the first source with the next", () => {
+  const main = hours("2026-11-03", (h) => ({ mean: h < 10 ? 1 : null })).filter((r) => r.mean !== null);
+  const backup = hours("2026-11-03", () => ({ mean: 5 }));
+  const merged = mergeTemps([main, backup]);
+  assert.equal(merged.length, 24);
+  assert.equal(merged[0].mean, 1);
+  assert.equal(merged[23].mean, 5);
+  const energy = hours("2026-11-03", () => ({ change: 1 }));
+  assert.equal(aggregateDays(energy, main).length, 0);
+  assert.equal(aggregateDays(energy, merged).length, 1);
+});
+
+test("a list of temperature sources is fetched and merged", async () => {
+  const energy = [], netatmo = [], backup = [];
+  const days = (y, m, n) => Array.from({ length: n }, (_, i) => `${y}-${m}-${String(i + 1).padStart(2, "0")}`);
+  days("2026", "10", 10).forEach((d, i) => {
+    energy.push(...hours(d, () => ({ change: 1 })));
+    backup.push(...hours(d, () => ({ mean: i })));
+    if (i % 2) netatmo.push(...hours(d, () => ({ mean: i })));
+  });
+  const c = new CalibraSignatureCard();
+  c.setConfig({ energy: "sensor.e", temperature: ["sensor.netatmo", "sensor.backup"], start: "2026-10-01", periods: [{ name: "Ny pump" }] });
+  let asked = null;
+  c.hass = { locale: { language: "sv" }, callWS: async (msg) => { asked = msg; return { "sensor.e": energy, "sensor.netatmo": netatmo, "sensor.backup": backup }; } };
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(asked.statistic_ids, ["sensor.e", "sensor.netatmo", "sensor.backup"]);
+  assert.equal(c._days.length, 10);
+  assert.match(c.shadowRoot.innerHTML, /Ny pump · 10 dygn/);
+});
+
+test("exclude drops date ranges from every period", () => {
+  const c = sigCard({ exclude: [{ start: "2026-03-01", end: "2026-03-11" }, {}] });
+  assert.match(c.shadowRoot.innerHTML, /Gammal pump · 10 dygn/);
+  assert.match(c.shadowRoot.innerHTML, /Ny pump · 20 dygn/);
 });

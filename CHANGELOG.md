@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.0 — 2026-11-06
+
+- **Energy signature: backup temperature sensors.** `temperature` can be a list. For each hour the first sensor with a value is used, so a day where the main sensor dropped out is filled from the next one instead of being left out.
+- **Energy signature: `exclude`.** A list of date ranges (`start`, `end`) left out of every period, for stretches where the data can't be trusted.
+
 ## 0.7.1 — 2026-11-01
 
 - The floor heating row says "går" or "står" (English "running"/"stopped") instead of the pump's power, which read like the heating power. `floor_pump_power` now only opens on tap.
