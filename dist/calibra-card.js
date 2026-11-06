@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.8.0";
+const CARD_VERSION = "0.8.1";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -947,7 +947,8 @@ class CalibraSignatureCard extends HTMLElement {
     if (r === null || r === undefined || r === "") return null;
     if (this._followsEntity()) {
       const v = parseFloat(this._hass?.states?.[r]?.state);
-      return Number.isFinite(v) ? Math.round(v * 2) / 2 : (this._config.reference_fallback ?? 5);
+      // + 0 turns −0 (from rounding −0.2) into 0, which is otherwise printed as "−0 °C"
+      return Number.isFinite(v) ? Math.round(v * 2) / 2 + 0 : (this._config.reference_fallback ?? 5);
     }
     return Number(r);
   }
@@ -1173,7 +1174,7 @@ function pctLabel(pct, lang) {
 // "5" for whole degrees, "6,5" otherwise
 function refLabel(t, lang) {
   if (t === null || t === undefined || !Number.isFinite(t)) return "–";
-  return fmt(t, Number.isInteger(t) ? 0 : 1, "", lang);
+  return fmt(t + 0, Number.isInteger(t) ? 0 : 1, "", lang);
 }
 
 const SIG_STYLE = `

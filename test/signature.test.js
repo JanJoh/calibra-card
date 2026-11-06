@@ -176,3 +176,11 @@ test("exclude drops date ranges from every period", () => {
   assert.match(c.shadowRoot.innerHTML, /Gammal pump · 10 dygn/);
   assert.match(c.shadowRoot.innerHTML, /Ny pump · 20 dygn/);
 });
+
+test("a reference just below zero reads 0 °C, not −0 °C", () => {
+  const { refLabel } = require("../dist/calibra-card.js");
+  const c = sigCard({ reference: "sensor.ute" }, { "sensor.ute": { state: "-0.2" } });
+  assert.ok(Object.is(c._baseRef(), 0));
+  assert.equal(refLabel(-0, "sv"), "0");
+  assert.doesNotMatch(c.shadowRoot.innerHTML, /[−-]0 °C/);
+});

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 — 2026-11-06
+
+- **Energy signature:** a reference that follows a sensor just below zero (−0.2 °C rounds to 0) is shown as "0 °C" instead of "−0 °C".
+
 ## 0.8.0 — 2026-11-06
 
 - **Energy signature: backup temperature sensors.** `temperature` can be a list. For each hour the first sensor with a value is used, so a day where the main sensor dropped out is filled from the next one instead of being left out.
