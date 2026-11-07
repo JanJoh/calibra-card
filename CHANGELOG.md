@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.2 — 2026-11-07
+
+- The supply pipes to the radiators or the hot water tank stay coloured while the immersion heater runs on its own, for example at the end of a legionella cycle. They used to turn grey as soon as the compressor stopped, though the condenser pump still carries the heater's heat.
+
 ## 0.8.1 — 2026-11-06
 
 - **Energy signature:** a reference that follows a sensor just below zero (−0.2 °C rounds to 0) is shown as "0 °C" instead of "−0 °C".

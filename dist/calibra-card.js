@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.8.1";
+const CARD_VERSION = "0.8.2";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -246,15 +246,17 @@ class CalibraCard extends HTMLElement {
     const demand = demandRaw ? (t.demands[demandRaw] || demandRaw) : "–";
     const running = e.compressor_running ? isOn(hass, e.compressor_running) : (n("compressor_pct") || 0) > 0;
     const valveTap = e.valve ? isOn(hass, e.valve) : demandRaw === "Hot water" || demandRaw === "Anti legionella";
-    const heatOn = running && !valveTap;
-    const hwOn = running && valveTap;
+    const immersion = e.immersion ? (str(hass, e.immersion) === "on" || (num(hass, e.immersion) || 0) > 0) : false;
+    // The immersion heater sits on the supply, so its heat flows to the radiators or the tank as well
+    const heating = running || immersion;
+    const heatOn = heating && !valveTap;
+    const hwOn = heating && valveTap;
     const brineOn = (n("brine_pump") ?? (running ? 1 : 0)) > 0;
     const gear = Math.round(n("gear") ?? 0);
     const gears = Math.round(n("gears_available") ?? 10) || 10;
     const maxKey = valveTap ? "gear_max_tap" : "gear_max_heat";
     const maxAllowed = Math.round(n(maxKey) ?? gears);
     const limited = maxAllowed < gears;
-    const immersion = e.immersion ? (str(hass, e.immersion) === "on" || (num(hass, e.immersion) || 0) > 0) : false;
     // Seconds left of the restart delay the pump starts each time the compressor stops (about 5 min).
     const blockedS = n("compressor_blocked") || 0, blocked = blockedS > 0, blockedMin = Math.max(1, Math.ceil(blockedS / 60));
     const alarm = isOn(hass, e.alarm);

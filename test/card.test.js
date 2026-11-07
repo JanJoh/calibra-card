@@ -75,6 +75,22 @@ test("heating: radiator branch live, valve points right, demand translated", () 
   assert.match(html(c), /1,42 kW/);
 });
 
+test("immersion heater alone during legionella: the hot water branch stays live, brine is idle", () => {
+  const c = card({
+    [`sensor.${P}_first_prioritised_demand`]: "Anti legionella",
+    "binary_sensor.valve_tap": "on",
+    [`binary_sensor.${P}_compressor_control_signal`]: "off",
+    [`sensor.${P}_compressor_speed_percent`]: "0",
+    [`sensor.${P}_brine_circulation_pump_speed`]: "0",
+    "sensor.immersion_step": "2",
+  });
+  const m = c._model();
+  assert.equal(m.hwOn, true);
+  assert.equal(m.heatOn, false);
+  assert.equal(m.brineOn, false);
+  assert.equal(m.compText, "Står still");
+});
+
 test("hot water with the sauna guard: hot water branch, limited gears hatched, notice in the explanation", () => {
   const c = card({
     [`sensor.${P}_first_prioritised_demand`]: "Hot water",
