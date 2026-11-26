@@ -9,7 +9,7 @@ It draws the system as it is actually plumbed:
 - **Pumps:** the brine pump on the brine line and the condenser pump on the supply, each drawn as a pump whose ring fills with its speed. The impeller spins faster at higher speed; it stays still with reduced motion.
 - **Internal immersion heater:** its active step, drawn as a bar like the gears.
 - **Diverting valve:** splits the supply between the radiators and the TWC tank. The arrow turns and the inactive branch greys out.
-- **Radiators:** supply, return, ΔT and heating stop (on/off and its limit).
+- **Radiators:** supply (with the pump's set point for it), return, ΔT and heating stop (on/off and its limit).
 - **Optional floor heating pump:** a circulation pump for a separate floor heating loop, drawn as a row in the radiator box with its own pump symbol and whether it runs.
 - **TWC tank:** top and bottom temperature, coloured by temperature.
 - **Optional separate water heater** in series after the tank, with its own thermostat, plus the taps.
@@ -85,6 +85,29 @@ notices:
 | `notices` | A list of `{entity, state (default "on"), text}`. Each text is added to the explanation line while its entity is in that state. |
 
 "Today" values (energy and the lowest brine temperature) come from long-term statistics and refresh every 5 minutes.
+
+### The pump's own power, COP and set point
+
+thermiagenesis 1.1 adds sensors for what the pump itself estimates and aims for. They are disabled by default in the integration; enable the ones you want on the device page and the card draws each one it finds. None of them needs the electric meter module.
+
+| Key | thermiagenesis sensor | Where it shows |
+|---|---|---|
+| `consumed_power` | Consumed Electrical Power | "Effekt nu" in the header, when no `power` meter is configured. |
+| `heat_output` | Heat Output Power | "Värme ut nu", with the live COP while the compressor runs. |
+| `cop_day` | Reported COP | "COP, senaste dygnet". |
+| `source_energy` | Energy From Natural Source | "Borrhål, senaste dygnet". |
+| `supply_setpoint` | System Supply Line Calculated Set Point | Beside the supply temperature in the radiator box ("bör 33,9°"). |
+| `superheat`, `subcooling` | Superheat Temperature, Sub Cooling Temperature | First rows of the refrigerant circuit view. |
+
+The live COP is heat output divided by the pump's own power estimate, or by the `power` meter when the estimate isn't enabled.
+
+Home Assistant names sensors you enable now after the device and its area, so their ids may not start with `diplomat_inverter_duo_` like the older ones. If a value doesn't appear, point its key at the id you have:
+
+```yaml
+entities:
+  heat_output: sensor.boiler_room_calibra_heat_output_power
+  consumed_power: sensor.boiler_room_calibra_consumed_electrical_power
+```
 
 ### Hot water tank
 

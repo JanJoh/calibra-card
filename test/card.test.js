@@ -336,3 +336,85 @@ test("no floor heating row without the option", () => {
   assert.equal(c._model().floor, null);
   assert.ok(!html(c).includes("Golvvärme"));
 });
+
+// thermiagenesis 1.1 sensors: the pump's own power estimate, COP, set point, superheat
+const PUMP = {
+  [`sensor.${P}_heat_output_power`]: "4.26",
+  [`sensor.${P}_consumed_electrical_power`]: "1.16",
+  [`sensor.${P}_reported_cop`]: "3.4",
+  [`sensor.${P}_energy_from_natural_source`]: "83",
+  [`sensor.${P}_system_supply_line_calculated_set_point`]: "33.86",
+  [`sensor.${P}_superheat_temperature`]: "2.21",
+  [`sensor.${P}_sub_cooling_temperature`]: "3.93",
+};
+
+test("pump estimate sensors are disabled by default in thermiagenesis: without them nothing new is drawn", () => {
+  const c = card();
+  const m = c._model();
+  assert.equal(m.stats.heat, null);
+  assert.equal(m.stats.cop, null);
+  assert.equal(m.stats.source, null);
+  assert.equal(m.supplySet, null);
+  assert.ok(!html(c).includes("COP"));
+  assert.ok(!html(c).includes("bör"));
+  c._detail = "circuit";
+  c._render();
+  assert.ok(!html(c).includes("Överhettning"));
+});
+
+test("pump estimate: heat output with the live COP, the day's COP and the energy from the borehole", () => {
+  const c = card(PUMP);
+  const m = c._model();
+  assert.equal(m.stats.heat, "4,26 kW · COP 3,7", "COP from the pump's own pair: 4.26 / 1.16");
+  assert.equal(m.stats.cop, "3,4");
+  assert.equal(m.stats.source, "83 kWh");
+  assert.match(html(c), /Värme ut nu/);
+  assert.match(html(c), /Borrhål, senaste dygnet/);
+});
+
+test("pump estimate: no COP while the compressor stands still", () => {
+  const c = card({ ...PUMP, [`binary_sensor.${P}_compressor_control_signal`]: "off", [`sensor.${P}_heat_output_power`]: "0" });
+  assert.equal(c._model().stats.heat, "0,00 kW");
+});
+
+test("header power: a configured meter wins, the pump's estimate fills in without one", () => {
+  const withMeter = card(PUMP);
+  assert.equal(withMeter._model().power, "1,42 kW");
+  assert.equal(withMeter._model().powerEntity, "sensor.vp_power");
+
+  const { power, ...noMeter } = SITE;
+  const c = card(PUMP, { entities: noMeter });
+  assert.equal(c._model().power, "1,16 kW");
+  assert.equal(c._model().powerEntity, `sensor.${P}_consumed_electrical_power`);
+  assert.match(html(c), /Effekt nu/);
+
+  const none = card({}, { entities: noMeter });
+  assert.equal(none._model().power, null, "neither a meter nor the estimate: no power in the header");
+});
+
+test("pump estimate: a power sensor in W is read as W", () => {
+  const { power, ...noMeter } = SITE;
+  const c = card(PUMP, { entities: noMeter });
+  const st = states(PUMP);
+  st[`sensor.${P}_consumed_electrical_power`] = { state: "1160", attributes: { unit_of_measurement: "W" } };
+  c._sig = null;
+  c.hass = { states: st, locale: { language: "sv" } };
+  assert.equal(c._model().power, "1,16 kW");
+});
+
+test("supply set point sits beside the supply temperature and opens its own entity", () => {
+  const c = card(PUMP);
+  assert.equal(c._model().supplySet, "bör 33,9°");
+  assert.match(html(c), new RegExp(`data-entity="sensor.${P}_system_supply_line_calculated_set_point">bör 33,9°`));
+  assert.equal(card(PUMP, {}, "en")._model().supplySet, "→ 33.9°");
+});
+
+test("refrigerant view: superheat and subcooling lead the rows when the pump reports them", () => {
+  const c = card(PUMP);
+  c._detail = "circuit";
+  c._render();
+  const h = html(c);
+  assert.match(h, /Överhettning<\/span><span>2,2 K/);
+  assert.match(h, /Underkylning<\/span><span>3,9 K/);
+  assert.ok(h.indexOf("Överhettning") < h.indexOf("Kompressor, drifttid"));
+});

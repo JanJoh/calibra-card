@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 — 2026-11-26
+
+For the sensors added in thermiagenesis 1.1. They are disabled by default there; the card draws each one it finds and nothing changes without them.
+
+- **Power without a meter.** With no `power` entity configured, "Effekt nu" shows the pump's own estimate (`consumed_power`). A configured meter still wins.
+- **Heat output and COP.** New tiles under the diagram: "Värme ut nu" with the live COP while the compressor runs (`heat_output`), "COP, senaste dygnet" (`cop_day`) and "Borrhål, senaste dygnet", the energy taken from the borehole (`source_energy`).
+- **Supply set point.** The temperature the pump is aiming for sits beside the supply temperature in the radiator box (`supply_setpoint`). Hidden in the compact layout.
+- **Superheat and subcooling** lead the rows of the refrigerant circuit view (`superheat`, `subcooling`).
+
 ## 0.8.2 — 2026-11-07
 
 - The supply pipes to the radiators or the hot water tank stay coloured while the immersion heater runs on its own, for example at the end of a legionella cycle. They used to turn grey as soon as the compressor stopped, though the condenser pump still carries the heater's heat.
