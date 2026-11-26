@@ -9,7 +9,7 @@
  * MIT License
  */
 
-const CARD_VERSION = "0.8.2";
+const CARD_VERSION = "0.9.0";
 
 // Entity defaults: the thermiagenesis entity ids. Anything else (power meter, price, the
 // valve, the water heater) is site specific and only shown when configured.
@@ -48,6 +48,16 @@ const DEFAULT_ENTITIES = {
   tap_water_hours: `sensor.${TG}_tap_water_operating_hours`,
   gear_min_heat: `number.${TG}_minimum_allowed_gear_in_heating`,
   phase_alarm: `binary_sensor.${TG}_power_input_phase_detection_alarm`,
+  // thermiagenesis 1.1 and later. All of these are disabled by default there, and each is
+  // only drawn when its entity exists. Power and energy are the pump's own estimate; no
+  // electric meter module is needed.
+  heat_output: `sensor.${TG}_heat_output_power`,
+  consumed_power: `sensor.${TG}_consumed_electrical_power`,
+  cop_day: `sensor.${TG}_reported_cop`,
+  source_energy: `sensor.${TG}_energy_from_natural_source`,
+  supply_setpoint: `sensor.${TG}_system_supply_line_calculated_set_point`,
+  superheat: `sensor.${TG}_superheat_temperature`,
+  subcooling: `sensor.${TG}_sub_cooling_temperature`,
 };
 
 const COLORS = {
@@ -68,6 +78,8 @@ const T = {
     heaterIdle: "vilar", heaterOn: "värmer", taps: "Kranar", outdoor: "Ute", power: "Effekt nu", price: "Elpris",
     heatStopOn: (t) => `Värmestopp på${t}`, heatStopOff: (t) => `Värmestopp av${t}`, limit: (t) => ` (${t})`,
     pumpToday: "Värmepump el idag", heaterToday: "Beredare idag", brineMin: "Lägsta brine idag", immHours: "Intern elpatron, totalt",
+    heatNow: "Värme ut nu", copDay: "COP, senaste dygnet", sourceDay: "Borrhål, senaste dygnet",
+    setpoint: (v) => `bör ${v}`, superheat: "Överhettning", subcooling: "Underkylning",
     back: "‹ Tillbaka", hp: "Högtryck (kondensor)", lp: "Lågtryck (förångare)", bubble: "Bubbelpunkt", dew: "Daggpunkt",
     compHours: "Kompressor, drifttid", tapHours: "Varmvatten, drifttid", gearsHeat: "Tillåtna växlar, värme",
     gearsTap: "Tillåtna växlar, varmvatten", blocked: "Omstartsspärr", minLeft: (m) => `${m} min kvar`, yes: "Ja", no: "Nej",
@@ -94,6 +106,8 @@ const T = {
     heaterIdle: "idle", heaterOn: "heating", taps: "Taps", outdoor: "Outdoor", power: "Power", price: "Price",
     heatStopOn: (t) => `Heating stop on${t}`, heatStopOff: (t) => `Heating stop off${t}`, limit: (t) => ` (${t})`,
     pumpToday: "Heat pump today", heaterToday: "Water heater today", brineMin: "Lowest brine today", immHours: "Immersion heater, total",
+    heatNow: "Heat output", copDay: "COP, last day", sourceDay: "Borehole, last day",
+    setpoint: (v) => `→ ${v}`, superheat: "Superheat", subcooling: "Subcooling",
     back: "‹ Back", hp: "High pressure (condenser)", lp: "Low pressure (evaporator)", bubble: "Bubble point", dew: "Dew point",
     compHours: "Compressor hours", tapHours: "Hot water hours", gearsHeat: "Allowed gears, heating",
     gearsTap: "Allowed gears, hot water", blocked: "Restart delay", minLeft: (m) => `${m} min left`, yes: "Yes", no: "No",
@@ -149,6 +163,13 @@ function sinceWhen(iso, lang, t, now = new Date()) {
   if (diff <= 0) return hm;
   if (diff === 1) return `${t.yesterday} ${hm}`;
   return `${d.toLocaleDateString(loc, { day: "numeric", month: "short" }).replace(".", "")} ${hm}`;
+}
+
+// A power sensor's value in kW. thermiagenesis reports kW; a sensor in W is converted.
+function kw(hass, id) {
+  const v = num(hass, id);
+  if (v === null) return null;
+  return hass.states[id].attributes?.unit_of_measurement === "W" ? v / 1000 : v;
 }
 
 function fmtPower(w, lang) {
@@ -302,10 +323,18 @@ class CalibraCard extends HTMLElement {
     const immHours = (Array.isArray(e.immersion_hours) ? e.immersion_hours : e.immersion_hours ? [e.immersion_hours] : [])
       .map((id) => num(hass, id));
 
+    // The pump's own estimate of what it draws and delivers. A configured power meter still
+    // owns the header; without one the estimate takes its place.
+    const pumpKw = kw(hass, e.consumed_power), heatKw = kw(hass, e.heat_output);
+    const elecKw = pumpKw ?? (e.power && num(hass, e.power) !== null ? num(hass, e.power) / 1000 : null);
+    const copNow = running && heatKw > 0 && elecKw > 0.1 ? heatKw / elecKw : null;
+    const powerEntity = e.power || (pumpKw !== null ? e.consumed_power : null);
+
     return {
       chip, why, tone,
       outdoor: fmt(outdoor, 1, "°C", lang),
-      power: e.power ? fmtPower(num(hass, e.power), lang) : null,
+      power: e.power ? fmtPower(num(hass, e.power), lang) : pumpKw !== null ? fmtPower(pumpKw * 1000, lang) : null,
+      powerEntity,
       price: e.price ? `${fmt(num(hass, e.price), 2, "", lang)} ${hass?.states?.[e.price]?.attributes?.unit_of_measurement || ""}`.trim() : null,
       brineIn: fmt(n("brine_in"), 1, "°", lang), brineOut: fmt(n("brine_out"), 1, "°", lang),
       brineDt: n("brine_in") !== null && n("brine_out") !== null ? fmt(n("brine_in") - n("brine_out"), 1, "", lang) : "–",
@@ -318,6 +347,7 @@ class CalibraCard extends HTMLElement {
       immersion: e.immersion ? this._immersionModel(immersion) : null,
       supply: heatOn || heatStop ? fmt(n("condenser_out"), 1, "°", lang) : fmt(n("condenser_out"), 1, "°", lang),
       ret: fmt(n("condenser_in"), 1, "°", lang),
+      supplySet: n("supply_setpoint") !== null ? t.setpoint(fmt(n("supply_setpoint"), 1, "°", lang)) : null,
       heatDt: n("condenser_out") !== null && n("condenser_in") !== null ? fmt(n("condenser_out") - n("condenser_in"), 1, "", lang) : "–",
       // The pump row says whether it runs; the power sensor, when configured, opens on tap.
       floor: e.floor_pump ? (() => { const on = isOn(hass, e.floor_pump); return { on, text: on ? t.floorOn : t.floorOff }; })() : null,
@@ -332,6 +362,9 @@ class CalibraCard extends HTMLElement {
         heater: e.heater_energy ? fmt(this._stats.heater, 1, "kWh", lang) : null,
         brine: fmt(this._stats.brine, 1, "°C", lang),
         imm: immHours.length ? immHours.map((h) => fmt(h, 0, "h", lang)).join(" · ") : null,
+        heat: heatKw !== null ? `${fmt(heatKw, 2, "kW", lang)}${copNow !== null ? ` · COP ${fmt(copNow, 1, "", lang)}` : ""}` : null,
+        cop: n("cop_day") !== null ? fmt(n("cop_day"), 1, "", lang) : null,
+        source: n("source_energy") !== null ? fmt(n("source_energy"), 0, "kWh", lang) : null,
       },
     };
   }
@@ -351,11 +384,16 @@ class CalibraCard extends HTMLElement {
     const hass = this._hass, e = this._config.entities, t = this._t, lang = this._lang;
     const n = (k) => num(hass, e[k]);
     const rng = (a, b) => `${n(a) ?? "–"}–${n(b) ?? "–"}`;
+    // Superheat and subcooling, when the pump's sensors for them are enabled
+    const health = [["superheat", t.superheat], ["subcooling", t.subcooling]]
+      .filter(([k]) => n(k) !== null).map(([k, label]) => [label, fmt(n(k), 1, "K", lang), e[k]]);
+    if (health.length) health.push(null);
     return [
       ["hp", fmt(n("high_pressure"), 1, "bar", lang), `${t.bubble} ${fmt(n("bubble_point"), 1, "°C", lang)}`, "high_pressure", "warm"],
       ["lp", fmt(n("low_pressure"), 1, "bar", lang), `${t.dew} ${fmt(n("dew_point"), 1, "°C", lang)}`, "low_pressure", "cold"],
     ].map(([k, v, sub, ent, kind]) => ({ label: t[k], value: v, sub, entity: e[ent], kind }))
       .concat([{ rows: [
+        ...health,
         [t.compHours, fmt(n("compressor_hours"), 0, "h", lang), e.compressor_hours],
         [t.tapHours, fmt(n("tap_water_hours"), 0, "h", lang), e.tap_water_hours],
         [t.gearsHeat, rng("gear_min_heat", "gear_max_heat"), e.gear_max_heat],
@@ -515,7 +553,7 @@ class CalibraCard extends HTMLElement {
   <g class="${m.heatOn || m.heatStop ? "" : "dim"}">
     <rect x="560" y="52" width="152" height="118" rx="12" class="box"/>
     ${txt(572, 72, t.radiators, "lbl")}
-    ${txt(572, 94, t.supply, "sm")}${txt(700, 94, m.supply, "val", e.condenser_out, "end")}
+    ${txt(572, 94, t.supply, "sm")}${m.supplySet ? txt(694 - 7.4 * m.supply.length, 94, m.supplySet, "xs muted opt", e.supply_setpoint, "end") : ""}${txt(700, 94, m.supply, "val", e.condenser_out, "end")}
     ${txt(572, 114, t.ret, "sm")}${txt(700, 114, m.ret, "val", e.condenser_in, "end")}
     ${m.floor ? `${txt(700, 72, `ΔT ${m.heatDt}`, "lbl opt", "", "end")}
     <g class="pump" data-entity="${esc(e.floor_pump)}">
@@ -562,7 +600,7 @@ class CalibraCard extends HTMLElement {
       `<div class="stat"${ent ? ` data-entity="${esc(ent)}"` : ""}><div class="lbl">${esc(label)}</div><div class="v">${esc(value)}</div></div>`;
     const head = [
       [t.outdoor, m.outdoor, e.outdoor],
-      [t.power, m.power, e.power],
+      [t.power, m.power, m.powerEntity],
       [t.price, m.price, e.price],
     ].filter((x) => x[1] !== null).map(([l, v, ent]) => `<div class="hstat" data-entity="${esc(ent)}"><div class="lbl">${esc(l)}</div><div class="v">${esc(v)}</div></div>`).join("");
 
@@ -583,6 +621,9 @@ class CalibraCard extends HTMLElement {
         ${stat(t.heaterToday, m.stats.heater, e.heater_energy)}
         ${stat(t.brineMin, m.stats.brine, e.brine_in)}
         ${stat(t.immHours, m.stats.imm, Array.isArray(e.immersion_hours) ? e.immersion_hours[0] : e.immersion_hours)}
+        ${stat(t.heatNow, m.stats.heat, e.heat_output)}
+        ${stat(t.copDay, m.stats.cop, e.cop_day)}
+        ${stat(t.sourceDay, m.stats.source, e.source_energy)}
       </div>`;
     }
     return `
