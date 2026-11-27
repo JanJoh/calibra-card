@@ -16,7 +16,7 @@
 <script>window.module = undefined;</script>
 <script src="../dist/calibra-card.js"></script>
 <script>
-  // Preview harness: ?mode=heat|hw|stop|idle&theme=light|dark&width=760&detail=1
+  // Preview harness: ?mode=heat|hw|stop|idle&theme=light|dark&width=760&detail=1 (or &curve=1)
   const q = new URLSearchParams(location.search);
   document.body.className = q.get("theme") || "light";
   document.getElementById("host").style.width = (q.get("width") || 760) + "px";
@@ -40,6 +40,9 @@
     [`sensor.${P}_heat_output_power`]: "4.26", [`sensor.${P}_consumed_electrical_power`]: "1.16", [`sensor.${P}_reported_cop`]: "3.4",
     [`sensor.${P}_energy_from_natural_source`]: "83", [`sensor.${P}_system_supply_line_calculated_set_point`]: "33.9",
     [`sensor.${P}_superheat_temperature`]: "2.21", [`sensor.${P}_sub_cooling_temperature`]: "3.93",
+    ...Object.fromEntries([17, 10, 5, 0, -5, -15, -25].map((v, i) => [`sensor.${P}_heat_curve_x_coordinate_${i + 1}`, String(v)])),
+    ...Object.fromEntries([23, 28, 32, 37, 39, 45, 51].map((v, i) => [`number.${P}_set_point_heat_curve_y_${i + 1}`, String(v)])),
+    [`number.${P}_min_limitation`]: "15", [`number.${P}_max_limitation`]: "60",
     "sensor.vp_power": "1420", "binary_sensor.valve": "off", "sensor.heater_power": "0", "sensor.price": "1.2227",
     "sensor.imm1": "16", "switch.floor": "on", "sensor.floor_w": "28.6", "sensor.imm2": "12", "input_boolean.sauna": "off", "sensor.immersion": "0",
   };
@@ -69,6 +72,7 @@
   c._stats = { pump: 9.8, heater: 1.9, brine: 1.6 };
   c._statsAt = Date.now();
   if (q.get("detail")) c._detail = true;
+  if (q.get("curve")) c._detail = "curve";
   c.hass = { states, locale: { language: "sv" } };
   if (+(q.get("width") || 760) < 560) { c._compact = true; c._render(); }
   document.getElementById("host").appendChild(c);

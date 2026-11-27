@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 require("./dom-shim");
-const { CalibraCard, DEFAULT_ENTITIES, tankColor, fmt } = require("../dist/calibra-card.js");
+const { CalibraCard, DEFAULT_ENTITIES, tankColor, fmt, curveAt, curveChart } = require("../dist/calibra-card.js");
 
 const P = "diplomat_inverter_duo";
 const SITE = {
@@ -418,3 +418,99 @@ test("refrigerant view: superheat and subcooling lead the rows when the pump rep
   assert.match(h, /Underkylning<\/span><span>3,9 K/);
   assert.ok(h.indexOf("Överhettning") < h.indexOf("Kompressor, drifttid"));
 });
+
+// The heat curve as the user's pump reports it (dump of 2026-11-04): seven outdoor
+// temperatures and the supply set point at each.
+const CURVE_X = [17, 10, 5, 0, -5, -15, -25], CURVE_Y = [23, 28, 32, 37, 39, 45, 51];
+const CURVE = Object.fromEntries([
+  ...CURVE_X.map((v, i) => [`sensor.${P}_heat_curve_x_coordinate_${i + 1}`, String(v)]),
+  ...CURVE_Y.map((v, i) => [`number.${P}_set_point_heat_curve_y_${i + 1}`, String(v)]),
+  [`number.${P}_min_limitation`, "15"], [`number.${P}_max_limitation`, "60"],
+]);
+const CURVE_PTS = CURVE_X.map((x, i) => [x, CURVE_Y[i]]);
+const clickAction = (c, action) => c._onClick({ composedPath: () => [{ getAttribute: (a) => (a === "data-action" ? action : null) }] });
+
+test("curveAt: straight lines between the points, matching what the pump itself calculates", () => {
+  // The pump reported a set point of 37.52 at -1.3 °C outdoors with this curve.
+  assert.equal(Number(curveAt(CURVE_PTS, -1.3).toFixed(2)), 37.52);
+  assert.equal(curveAt(CURVE_PTS, 0), 37);
+  assert.equal(curveAt(CURVE_PTS, 7.5), 30);
+  // Order of the points does not matter
+  assert.equal(curveAt([...CURVE_PTS].reverse(), 7.5), 30);
+});
+
+test("curveAt: beyond the first and last point the end value is held", () => {
+  assert.equal(curveAt(CURVE_PTS, 25), 23);
+  assert.equal(curveAt(CURVE_PTS, -40), 51);
+  assert.equal(curveAt(CURVE_PTS, null), null);
+  assert.equal(curveAt([[0, 37]], 0), null);
+});
+
+test("heat curve entities are disabled by default in thermiagenesis: without them the radiator box is not a button", () => {
+  const c = card(PUMP);
+  assert.equal(c._model().hasCurve, false);
+  assert.doesNotMatch(html(c), /data-action="curve"/);
+  assert.match(html(c), />Radiatorer</);
+});
+
+test("with the curve's points the radiator box opens the heat curve, and Back returns", () => {
+  const c = card({ ...PUMP, ...CURVE, [`sensor.${P}_outdoor_temperature`]: "-1.3" });
+  assert.equal(c._model().hasCurve, true);
+  assert.match(html(c), /data-action="curve" tabindex="0" role="button" aria-label="Visa värmekurvan"/);
+  assert.match(html(c), />Radiatorer ›</);
+  clickAction(c, "curve");
+  assert.equal(c._detail, "curve");
+  const h = html(c);
+  assert.match(h, /class="dtitle">Värmekurva</);
+  assert.match(h, /Ute nu<\/span><span class="v">−1,3 °C/);
+  assert.match(h, /Kurvan ger<\/span><span class="v">37,5 °C/);
+  assert.match(h, /Pumpens börvärde<\/span><span class="v">33,9 °C/);
+  assert.match(h, /Framledning nu<\/span><span class="v">33,1 °C/);
+  assert.match(h, /Framledningen begränsas till 15–60 °C\./);
+  assert.equal((h.match(/class="cpt"/g) || []).length, 7);
+  clickAction(c, "detail");
+  assert.equal(c._detail, false);
+  assert.match(html(c), /class="diagram"/);
+});
+
+test("heat curve: a value in the legend still opens its own entity, and the points open nothing", () => {
+  const c = card({ ...PUMP, ...CURVE });
+  clickAction(c, "curve");
+  const h = html(c);
+  assert.match(h, new RegExp(`data-entity="sensor.${P}_system_supply_line_calculated_set_point"><i class="cset">`));
+  // The seven set points are writable number entities; the chart must not be a way to change them
+  assert.doesNotMatch(h, /data-entity="number\.[a-z_]*set_point_heat_curve_y/);
+});
+
+test("heat curve: the pump's set point is drawn separately only when it is not on the curve", () => {
+  const t = { curveAria: "a", curveX: "x", curveY: "y", noHistory: "none" };
+  const on = curveChart(CURVE_PTS, { out: -1.3, set: 37.52, supply: 36.8, lo: 15, hi: 60 }, "sv", t);
+  assert.match(on, /class="cgive"/);
+  assert.doesNotMatch(on, /class="csetm"/);
+  const off = curveChart(CURVE_PTS, { out: -1.3, set: 34, supply: 36.8, lo: 15, hi: 60 }, "sv", t);
+  assert.match(off, /class="csetm"/);
+  // Limits outside the drawn range add no line
+  assert.doesNotMatch(on, /class="lim"/);
+});
+
+test("heat curve: outdoors beyond the curve is said in words and the marker stays on the chart", () => {
+  const c = card({ ...PUMP, ...CURVE, [`sensor.${P}_outdoor_temperature`]: "21" });
+  clickAction(c, "curve");
+  const h = html(c);
+  assert.match(h, /Utetemperaturen ligger utanför kurvans punkter/);
+  assert.match(h, /Kurvan ger<\/span><span class="v">23,0 °C/);
+});
+
+test("heat curve: fewer than two usable points and there is no curve", () => {
+  const partial = { ...CURVE };
+  for (let i = 2; i <= 7; i++) partial[`number.${P}_set_point_heat_curve_y_${i}`] = "unavailable";
+  assert.equal(card({ ...PUMP, ...partial })._model().hasCurve, false);
+});
+
+test("heat curve in English", () => {
+  const c = card({ ...PUMP, ...CURVE }, {}, "en");
+  clickAction(c, "curve");
+  assert.match(html(c), /class="dtitle">Heat curve</);
+  assert.match(html(c), /The supply is limited to 15–60 °C\./);
+});
+

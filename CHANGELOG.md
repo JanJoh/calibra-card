@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 — unreleased
+
+- **Heat curve.** Tap the radiator box for the pump's heat curve: seven outdoor temperatures and the supply set point at each (`curve_x`, `curve_y`), with the outdoor temperature now marked, what the curve gives there, the pump's calculated set point and the actual supply temperature. The supply limits (`curve_min`, `curve_max`) are stated under the chart. The entities are disabled by default in thermiagenesis; without them nothing changes. The card only reads them, and the chart's points open nothing, since the set points are writable.
+
 ## 0.9.0 — 2026-11-26
 
 For the sensors added in thermiagenesis 1.1. They are disabled by default there; the card draws each one it finds and nothing changes without them.

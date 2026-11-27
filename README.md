@@ -9,7 +9,7 @@ It draws the system as it is actually plumbed:
 - **Pumps:** the brine pump on the brine line and the condenser pump on the supply, each drawn as a pump whose ring fills with its speed. The impeller spins faster at higher speed; it stays still with reduced motion.
 - **Internal immersion heater:** its active step, drawn as a bar like the gears.
 - **Diverting valve:** splits the supply between the radiators and the TWC tank. The arrow turns and the inactive branch greys out.
-- **Radiators:** supply (with the pump's set point for it), return, ΔT and heating stop (on/off and its limit).
+- **Radiators:** supply (with the pump's set point for it), return, ΔT and heating stop (on/off and its limit). Tap the box for the heat curve.
 - **Optional floor heating pump:** a circulation pump for a separate floor heating loop, drawn as a row in the radiator box with its own pump symbol and whether it runs.
 - **TWC tank:** top and bottom temperature, coloured by temperature.
 - **Optional separate water heater** in series after the tank, with its own thermostat, plus the taps.
@@ -107,6 +107,30 @@ Home Assistant names sensors you enable now after the device and its area, so th
 entities:
   heat_output: sensor.boiler_room_calibra_heat_output_power
   consumed_power: sensor.boiler_room_calibra_consumed_electrical_power
+```
+
+### Heat curve
+
+Tap the radiator box to see the pump's heat curve: its seven outdoor temperatures and the supply set point at each, with the outdoor temperature right now marked on it. The legend gives what the curve asks for at that temperature, the pump's own calculated set point (drawn separately only when it is not on the curve) and the actual supply temperature. The pump's lower and upper limits for the supply are stated under the chart.
+
+![Heat curve](https://raw.githubusercontent.com/JanJoh/calibra-card/main/images/heat-curve-light-760.png)
+
+The curve's entities are disabled by default in thermiagenesis: seven sensors (Heat Curve X Coordinate 1–7) and seven numbers (Set Point Heat Curve Y 1–7), plus Min Limitation and Max Limitation. Enable them on the device page. Until at least two points are readable the radiator box is not a button and nothing changes.
+
+The card only reads them. The set points are writable numbers in Home Assistant, so the chart's points deliberately open nothing: changing the curve is done on the pump or on the device page, not by a stray tap.
+
+As with the sensors above, ids you enable now may not start with `diplomat_inverter_duo_`. Then list them, warmest point first or in any order:
+
+```yaml
+entities:
+  curve_x:
+    - sensor.boiler_room_calibra_heat_curve_x_coordinate_1
+    # … through 7
+  curve_y:
+    - number.boiler_room_calibra_set_point_heat_curve_y_1
+    # … through 7
+  curve_min: number.boiler_room_calibra_min_limitation
+  curve_max: number.boiler_room_calibra_max_limitation
 ```
 
 ### Hot water tank
