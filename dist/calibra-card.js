@@ -58,6 +58,12 @@ const DEFAULT_ENTITIES = {
   supply_setpoint: `sensor.${TG}_system_supply_line_calculated_set_point`,
   superheat: `sensor.${TG}_superheat_temperature`,
   subcooling: `sensor.${TG}_sub_cooling_temperature`,
+  // The heat curve: seven outdoor temperatures and the supply set point at each. Disabled by
+  // default in thermiagenesis too. The radiator box opens the curve only when they exist.
+  curve_x: [1, 2, 3, 4, 5, 6, 7].map((i) => `sensor.${TG}_heat_curve_x_coordinate_${i}`),
+  curve_y: [1, 2, 3, 4, 5, 6, 7].map((i) => `number.${TG}_set_point_heat_curve_y_${i}`),
+  curve_min: `number.${TG}_min_limitation`,
+  curve_max: `number.${TG}_max_limitation`,
 };
 
 const COLORS = {
@@ -97,6 +103,10 @@ const T = {
     loading: "Hämtar historik…", noHistory: "Ingen historik för perioden.",
     ranges: [[24, "1 dygn"], [72, "3 dygn"], [168, "7 dygn"]],
     legio: "Legionella", legioNow: "Legionella pågår nu", legioLast: (w) => `Legionella senast ${w}`, legioNext: (w) => `nästa omkring ${w}`,
+    curve: "Värmekurva", curveOpen: "Visa värmekurvan", curveOut: "Ute nu", curveGives: "Kurvan ger", curveSet: "Pumpens börvärde",
+    curveSupply: "Framledning nu", curveLimits: (a, b) => `Framledningen begränsas till ${a}–${b}.`,
+    curveX: "Utetemperatur", curveY: "Framledning", curveAria: "Värmekurvan: framledningens börvärde mot utetemperaturen",
+    curveOutside: "Utetemperaturen ligger utanför kurvans punkter, så kurvan hålls vid sitt ändvärde.",
   },
   en: {
     title: "Heat pump", borehole: "Borehole", in: "In", out: "Out", compressor: "Compressor",
@@ -124,6 +134,10 @@ const T = {
     loading: "Loading history…", noHistory: "No history for this period.",
     ranges: [[24, "1 day"], [72, "3 days"], [168, "7 days"]],
     legio: "Legionella", legioNow: "Legionella cycle running now", legioLast: (w) => `Legionella last ${w}`, legioNext: (w) => `next around ${w}`,
+    curve: "Heat curve", curveOpen: "Show the heat curve", curveOut: "Outdoor now", curveGives: "Curve gives", curveSet: "Pump set point",
+    curveSupply: "Supply now", curveLimits: (a, b) => `The supply is limited to ${a}–${b}.`,
+    curveX: "Outdoor temperature", curveY: "Supply", curveAria: "Heat curve: supply set point against outdoor temperature",
+    curveOutside: "The outdoor temperature is beyond the curve's points, so the curve holds its end value.",
   },
 };
 
@@ -198,7 +212,7 @@ class CalibraCard extends HTMLElement {
       ...config,
       entities: { ...DEFAULT_ENTITIES, ...(config.entities || {}) },
     };
-    this._detail = false;   // false, "circuit" or "tank"
+    this._detail = false;   // false, "circuit", "tank" or "curve"
     this._tankHours = this._config.tank_hours || 72;
     this._tankHist = null;
     this._stats = {};
@@ -348,6 +362,7 @@ class CalibraCard extends HTMLElement {
       supply: heatOn || heatStop ? fmt(n("condenser_out"), 1, "°", lang) : fmt(n("condenser_out"), 1, "°", lang),
       ret: fmt(n("condenser_in"), 1, "°", lang),
       supplySet: n("supply_setpoint") !== null ? t.setpoint(fmt(n("supply_setpoint"), 1, "°", lang)) : null,
+      hasCurve: this._curvePoints().length >= 2,
       heatDt: n("condenser_out") !== null && n("condenser_in") !== null ? fmt(n("condenser_out") - n("condenser_in"), 1, "", lang) : "–",
       // The pump row says whether it runs; the power sensor, when configured, opens on tap.
       floor: e.floor_pump ? (() => { const on = isOn(hass, e.floor_pump); return { on, text: on ? t.floorOn : t.floorOff }; })() : null,
@@ -466,6 +481,40 @@ class CalibraCard extends HTMLElement {
     </div>`;
   }
 
+  // The curve's points as [outdoor °C, supply set point °C], warmest first. A pair is kept
+  // only when both of its entities hold a number.
+  _curvePoints() {
+    const hass = this._hass, e = this._config.entities;
+    const xs = Array.isArray(e.curve_x) ? e.curve_x : [], ys = Array.isArray(e.curve_y) ? e.curve_y : [];
+    const pts = [];
+    for (let i = 0; i < Math.min(xs.length, ys.length); i++) {
+      const x = num(hass, xs[i]), y = num(hass, ys[i]);
+      if (x !== null && y !== null) pts.push([x, y]);
+    }
+    return pts.sort((a, b) => b[0] - a[0]);
+  }
+
+  _curveHtml() {
+    const t = this._t, lang = this._lang, e = this._config.entities, hass = this._hass;
+    const pts = this._curvePoints();
+    const out = num(hass, e.outdoor), set = num(hass, e.supply_setpoint), supply = num(hass, e.condenser_out);
+    const lo = num(hass, e.curve_min), hi = num(hass, e.curve_max);
+    const gives = out === null ? null : curveAt(pts, out);
+    const outside = out !== null && pts.length >= 2 && (out > pts[0][0] || out < pts.at(-1)[0]);
+    const leg = (cls, label, v, ent) => v === null ? "" :
+      `<div class="tleg"${ent ? ` data-entity="${esc(ent)}"` : ""}><i class="${cls}"></i><span class="lbl">${esc(label)}</span><span class="v">${esc(fmt(v, 1, "°C", lang))}</span></div>`;
+    const notes = [
+      lo !== null && hi !== null ? t.curveLimits(fmt(lo, 0, "", lang), fmt(hi, 0, "°C", lang)) : "",
+      outside ? t.curveOutside : "",
+    ].filter(Boolean);
+    return `<div class="detail">
+      <div class="dhead"><div class="dtitle">${esc(t.curve)}</div><button class="back" data-action="detail">${esc(t.back)}</button></div>
+      <div class="tlegs">${leg("cout", t.curveOut, out, e.outdoor)}${leg("ccurve", t.curveGives, gives, "")}${leg("cset", t.curveSet, set, e.supply_setpoint)}${leg("csup", t.curveSupply, supply, e.condenser_out)}</div>
+      ${curveChart(pts, { out, set, supply, lo, hi }, lang, t)}
+      ${notes.map((n) => `<div class="lbl tlim">${esc(n)}</div>`).join("")}
+    </div>`;
+  }
+
   _svg(m) {
     const t = this._t, c = COLORS, e = this._config.entities;
     const col = {
@@ -550,9 +599,9 @@ class CalibraCard extends HTMLElement {
   <g${e.valve ? ` data-entity="${esc(e.valve)}"` : ""}><rect x="430" y="146" width="122" height="20" rx="10" class="pill opt"/>${txt(491, 160, `${t.valve} ${m.valveTap ? t.toTap : t.toHeat}`, "xs opt", "", "middle")}</g>
   ${pipe(330, 292, 470, 292, col.hwRet)}${pipe(330, 236, 330, 292, col.hwRet)}
 
-  <g class="${m.heatOn || m.heatStop ? "" : "dim"}">
-    <rect x="560" y="52" width="152" height="118" rx="12" class="box"/>
-    ${txt(572, 72, t.radiators, "lbl")}
+  <g class="${m.heatOn || m.heatStop ? "" : "dim"}${m.hasCurve ? " rad" : ""}"${m.hasCurve ? ` data-action="curve" tabindex="0" role="button" aria-label="${esc(t.curveOpen)}"` : ""}>
+    <rect x="560" y="52" width="152" height="118" rx="12" class="box radbox"/>
+    ${txt(572, 72, m.hasCurve ? `${t.radiators} ›` : t.radiators, "lbl")}
     ${txt(572, 94, t.supply, "sm")}${m.supplySet ? txt(694 - 7.4 * m.supply.length, 94, m.supplySet, "xs muted opt", e.supply_setpoint, "end") : ""}${txt(700, 94, m.supply, "val", e.condenser_out, "end")}
     ${txt(572, 114, t.ret, "sm")}${txt(700, 114, m.ret, "val", e.condenser_in, "end")}
     ${m.floor ? `${txt(700, 72, `ΔT ${m.heatDt}`, "lbl opt", "", "end")}
@@ -607,6 +656,8 @@ class CalibraCard extends HTMLElement {
     let body;
     if (this._detail === "tank") {
       body = this._tankHtml();
+    } else if (this._detail === "curve") {
+      body = this._curveHtml();
     } else if (this._detail) {
       const d = this._detailModel();
       body = `<div class="detail">
@@ -678,6 +729,12 @@ class CalibraCard extends HTMLElement {
       if (act === "detail") {
         // the refrigerant circuit's button, and every view's "Back"
         this._detail = this._detail ? false : "circuit";
+        this._sig = null;
+        this._render();
+        return;
+      }
+      if (act === "curve") {
+        this._detail = "curve";
         this._sig = null;
         this._render();
         return;
@@ -781,6 +838,51 @@ function tankChart(h, start, stop, lang, legioLabel = "Legionella") {
   return out + "</svg>";
 }
 
+// The supply set point the curve gives at an outdoor temperature: straight lines between the
+// points, and the end value held beyond the first and last point. Checked against the pump:
+// at -1.3 °C between (0, 37) and (-5, 39) it reports 37.52, which is this interpolation.
+function curveAt(pts, out) {
+  if (!pts || pts.length < 2 || out === null || out === undefined) return null;
+  const p = [...pts].sort((a, b) => b[0] - a[0]);
+  if (out >= p[0][0]) return p[0][1];
+  if (out <= p.at(-1)[0]) return p.at(-1)[1];
+  for (let i = 0; i < p.length - 1; i++) {
+    const [x0, y0] = p[i], [x1, y1] = p[i + 1];
+    if (out <= x0 && out >= x1) return x0 === x1 ? y0 : y0 + (out - x0) / (x1 - x0) * (y1 - y0);
+  }
+  return null;
+}
+
+// The heat curve as a chart. Warm weather is on the left and cold on the right, the way heat
+// curves are usually drawn, so the line rises as it gets colder.
+function curveChart(pts, now, lang, t) {
+  if (!pts || pts.length < 2) return `<div class="tmsg">${esc(t.noHistory)}</div>`;
+  const W = 760, H = 300, L = 44, R = 744, T0 = 16, B = 256;
+  const p = [...pts].sort((a, b) => b[0] - a[0]);
+  const xMax = p[0][0], xMin = p.at(-1)[0];
+  const outX = now.out === null ? null : Math.min(xMax, Math.max(xMin, now.out));
+  const gives = now.out === null ? null : curveAt(p, now.out);
+  const ysAll = p.map((q) => q[1]).concat([now.set, now.supply].filter((v) => v !== null && v !== undefined));
+  const lo = Math.floor((Math.min(...ysAll) - 2) / 5) * 5, hi = Math.ceil((Math.max(...ysAll) + 2) / 5) * 5;
+  const x = (v) => L + (xMax - v) / Math.max(1, xMax - xMin) * (R - L), y = (v) => B - (v - lo) / Math.max(1, hi - lo) * (B - T0);
+  const f = (v) => v.toFixed(1);
+  let out = `<svg class="tchart cchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t.curveAria)}">`;
+  for (let v = lo; v <= hi; v += hi - lo > 40 ? 10 : 5) out += `<line x1="${L}" x2="${R}" y1="${f(y(v))}" y2="${f(y(v))}" class="grid"/><text x="${L - 6}" y="${f(y(v) + 4)}" text-anchor="end" class="ax">${v}</text>`;
+  for (let v = Math.ceil(xMin / 5) * 5; v <= xMax; v += 5) out += `<line x1="${f(x(v))}" x2="${f(x(v))}" y1="${T0}" y2="${B}" class="grid${v === 0 ? " mid" : ""}"/><text x="${f(x(v))}" y="${B + 16}" text-anchor="middle" class="ax">${String(v).replace("-", "−")}</text>`;
+  out += `<text x="${R}" y="${H - 6}" text-anchor="end" class="ax">${esc(t.curveX)} °C</text><text x="${L}" y="${T0 - 4}" class="ax">${esc(t.curveY)} °C</text>`;
+  for (const v of [now.lo, now.hi]) if (v !== null && v !== undefined && v > lo && v < hi) out += `<line x1="${L}" x2="${R}" y1="${f(y(v))}" y2="${f(y(v))}" class="lim"/>`;
+  out += `<path d="${p.map(([a, b], i) => `${i ? "L" : "M"}${f(x(a))},${f(y(b))}`).join(" ")}" class="cline"/>`;
+  out += p.map(([a, b]) => `<circle cx="${f(x(a))}" cy="${f(y(b))}" r="4" class="cpt"><title>${esc(fmt(a, 0, "°C", lang))} → ${esc(fmt(b, 0, "°C", lang))}</title></circle>`).join("");
+  if (outX !== null) {
+    out += `<line x1="${f(x(outX))}" x2="${f(x(outX))}" y1="${T0}" y2="${B}" class="cnow"/>`;
+    if (now.supply !== null && now.supply !== undefined) out += `<path d="M${f(x(outX) - 9)},${f(y(now.supply))}h18" class="csupm"/>`;
+    if (gives !== null) out += `<circle cx="${f(x(outX))}" cy="${f(y(gives))}" r="6.5" class="cgive"/>`;
+    // The pump's own set point, drawn only when it is not where the curve puts it
+    if (now.set !== null && now.set !== undefined && (gives === null || Math.abs(now.set - gives) > 0.25)) out += `<circle cx="${f(x(outX))}" cy="${f(y(now.set))}" r="5" class="csetm"/>`;
+  }
+  return out + "</svg>";
+}
+
 const STYLE = `
 :host { display: block; }
 .wrap { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; color: var(--primary-text-color); }
@@ -870,6 +972,18 @@ svg .tank:hover .tankbody, svg .tank:focus-visible .tankbody { stroke: var(--pri
 .tlim { font-size: 12px; }
 .tmsg { font-size: 13px; color: var(--secondary-text-color); padding: 40px 0; text-align: center; }
 svg.tchart { width: 100%; height: auto; display: block; font-family: inherit; }
+svg .rad { cursor: pointer; outline: none; }
+svg .rad:hover .radbox, svg .rad:focus-visible .radbox { stroke: var(--primary-color); stroke-width: 2; }
+.tleg i.cout { background: var(--primary-text-color); width: 3px; height: 14px; }
+.tleg i.ccurve { background: #d9622b; width: 12px; height: 12px; border-radius: 50%; }
+.tleg i.cset { background: none; box-sizing: border-box; border: 2.5px solid #2f6fb3; width: 12px; height: 12px; border-radius: 50%; }
+.tleg i.csup { background: #d0453a; }
+svg.cchart .cline { fill: none; stroke: #d9622b; stroke-width: 2.5; stroke-linejoin: round; }
+svg.cchart .cpt { fill: var(--card-background-color, #fff); stroke: #d9622b; stroke-width: 2; }
+svg.cchart .cnow { stroke: var(--primary-text-color); stroke-width: 1.5; stroke-dasharray: 3 4; stroke-opacity: 0.7; }
+svg.cchart .cgive { fill: #d9622b; stroke: var(--card-background-color, #fff); stroke-width: 2; }
+svg.cchart .csetm { fill: var(--card-background-color, #fff); stroke: #2f6fb3; stroke-width: 2.5; }
+svg.cchart .csupm { stroke: #d0453a; stroke-width: 3.5; stroke-linecap: round; fill: none; }
 svg.tchart .grid { stroke: var(--divider-color, #e3e6ea); }
 svg.tchart .grid.mid { stroke: var(--secondary-text-color); stroke-opacity: 0.35; }
 svg.tchart .lim { stroke: var(--secondary-text-color); stroke-dasharray: 4 4; stroke-opacity: 0.7; }
@@ -1266,5 +1380,5 @@ if (!customElements.get("calibra-card")) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, tankColor, fmt, sinceWhen, aggregateDays, mergeTemps, fitQuad, refLabel, pctLabel, tankPoints, tankChart, legionellaRuns, nextLegionella };   // for the tests
+  module.exports = { CalibraCard, CalibraSignatureCard, DEFAULT_ENTITIES, curveAt, curveChart, tankColor, fmt, sinceWhen, aggregateDays, mergeTemps, fitQuad, refLabel, pctLabel, tankPoints, tankChart, legionellaRuns, nextLegionella };   // for the tests
 }
